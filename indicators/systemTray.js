@@ -31,9 +31,49 @@ const SYSTEM_ROLES = [
     'a11y',
     // 'keyboard' — replaced by indicators/keyboardLayout.js
     'dwellClick',
-    'screenRecording',
-    'screenSharing',
+    // screenRecording / screenSharing stay on the stock top panel (hidden)
 ];
+
+/** Default right-side item order (prefs: panel-item-order). */
+export const DEFAULT_PANEL_ITEM_ORDER = ['clock', 'system', 'keyboard'];
+
+/**
+ * Normalize a panel-item-order strv: known ids only, unique, with defaults filled.
+ *
+ * @param {string[]} order
+ * @returns {string[]}
+ */
+export function normalizePanelItemOrder(order) {
+    const known = new Set(DEFAULT_PANEL_ITEM_ORDER);
+    const seen = new Set();
+    const result = [];
+    for (const id of order ?? []) {
+        if (!known.has(id) || seen.has(id))
+            continue;
+        seen.add(id);
+        result.push(id);
+    }
+    for (const id of DEFAULT_PANEL_ITEM_ORDER) {
+        if (!seen.has(id))
+            result.push(id);
+    }
+    return result;
+}
+
+/**
+ * Recursively set St.Icon.icon_size under an actor (native tray icons).
+ *
+ * @param {Clutter.Actor} actor
+ * @param {number} size
+ */
+function applyIconSizeRecursive(actor, size) {
+    if (!actor)
+        return;
+    if (actor instanceof St.Icon)
+        actor.icon_size = size;
+    for (const child of actor.get_children?.() ?? [])
+        applyIconSizeRecursive(child, size);
+}
 
 /**
  * Flip a PopupMenu so it opens upward from a bottom panel.
@@ -85,6 +125,7 @@ export class SystemTrayManager {
      *   clockStyle?: string,
      *   showSystemIndicators: boolean,
      *   showKeyboardLayout?: boolean,
+     *   trayIconSize?: number,
      * }} options
      */
     constructor(targetBox, centerBox, options) {
@@ -94,43 +135,88 @@ export class SystemTrayManager {
         this._placements = new Map();
         this._menuSides = new Map();
         this._roles = [];
+        this._trayIconSize = options.trayIconSize ?? 16;
     }
 
     /**
-     * Move indicators from Main.panel into the bottom panel.
+     * Hide stock keyboard when a custom indicator is used.
      */
-    enable() {
+    prepareKeyboard() {
         const {statusArea} = Main.panel;
         if (!statusArea)
             return;
-
-        const roles = [...SYSTEM_ROLES];
-
-        // Custom keyboard replaces stock when enabled.
-        if (this._options.showKeyboardLayout === false && statusArea.keyboard)
-            roles.push('keyboard');
 
         if (this._options.showKeyboardLayout && statusArea.keyboard) {
             this._keyboardWasVisible = statusArea.keyboard.visible;
             statusArea.keyboard.visible = false;
         }
+    }
 
-        // Native dateMenu clock only when style is default. Seven-segment uses
-        // a custom widget that still toggles dateMenu.menu for the calendar.
-        const useNativeClock = this._options.showClock &&
-            this._options.clockStyle !== 'seven-segment';
-        if (useNativeClock && statusArea.dateMenu)
-            this._moveRole('dateMenu', this._clockTarget());
-        else if (this._options.showClock &&
-            this._options.clockStyle === 'seven-segment' &&
-            statusArea.dateMenu?.menu)
-            setMenuOpensUpward(statusArea.dateMenu.menu);
+    /**
+     * Move the native dateMenu into `box` (default style only).
+     * Seven-segment clocks only need the menu to open upward.
+     *
+     * @param {St.BoxLayout} box
+     */
+    placeClock(box) {
+        const {statusArea} = Main.panel;
+        if (!statusArea || !this._options.showClock)
+            return;
 
-        if (this._options.showSystemIndicators) {
-            for (const role of roles) {
-                if (statusArea[role])
-                    this._moveRole(role, this._targetBox);
-            }
+        if (this._options.clockStyle === 'seven-segment') {
+            if (statusArea.dateMenu?.menu)
+                setMenuOpensUpward(statusArea.dateMenu.menu);
+            return;
+        }
+
+        if (statusArea.dateMenu)
+            this._moveRole('dateMenu', box);
+    }
+
+    /**
+     * Move Quick Settings / a11y / dwellClick into `box`.
+     *
+     * @param {St.BoxLayout} box
+     */
+    placeSystemIndicators(box) {
+        const {statusArea} = Main.panel;
+        if (!statusArea || !this._options.showSystemIndicators)
+            return;
+
+        const roles = [...SYSTEM_ROLES];
+        if (this._options.showKeyboardLayout === false && statusArea.keyboard)
+            roles.push('keyboard');
+
+        for (const role of roles) {
+            if (statusArea[role])
+                this._moveRole(role, box);
+        }
+
+        this.applyTrayIconSize(this._trayIconSize);
+    }
+
+    /**
+     * Legacy one-shot enable (clock + system) for callers that do not order.
+     */
+    enable() {
+        this.prepareKeyboard();
+        this.placeClock(this._clockTarget());
+        this.placeSystemIndicators(this._targetBox);
+    }
+
+    /**
+     * Scale native tray icons (Quick Settings, a11y, …).
+     *
+     * @param {number} size
+     */
+    applyTrayIconSize(size) {
+        this._trayIconSize = size;
+        for (const role of this._roles) {
+            if (role === 'dateMenu')
+                continue;
+            const indicator = Main.panel.statusArea?.[role];
+            if (indicator?.container)
+                applyIconSizeRecursive(indicator.container, size);
         }
     }
 
@@ -171,6 +257,9 @@ export class SystemTrayManager {
         box.add_child(container);
         container.show();
         indicator.show?.();
+
+        if (role !== 'dateMenu' && this._trayIconSize)
+            applyIconSizeRecursive(container, this._trayIconSize);
     }
 
     /**

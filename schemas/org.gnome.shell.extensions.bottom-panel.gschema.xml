@@ -17,6 +17,19 @@
       <range min="16" max="64"/>
     </key>
 
+    <key name="tray-icon-size" type="i">
+      <default>16</default>
+      <summary>Tray icon size</summary>
+      <description>Size of system tray / right-side icons (Quick Settings, keyboard flag, etc.), in logical pixels.</description>
+      <range min="12" max="48"/>
+    </key>
+
+    <key name="panel-item-order" type="as">
+      <default>['clock', 'system', 'keyboard']</default>
+      <summary>Right-side item order</summary>
+      <description>Order of right-side panel items. Known ids: clock, system, keyboard.</description>
+    </key>
+
     <key name="panel-spacing" type="i">
       <default>8</default>
       <summary>Panel spacing</summary>
@@ -52,6 +65,18 @@
       <summary>Panel opacity</summary>
       <description>Background opacity of the panel (0.0–1.0).</description>
       <range min="0.3" max="1.0"/>
+    </key>
+
+    <key name="use-custom-panel-color" type="b">
+      <default>false</default>
+      <summary>Use custom panel color</summary>
+      <description>When enabled, use panel-color instead of the light/dark theme default background.</description>
+    </key>
+
+    <key name="panel-color" type="s">
+      <default>"#202020"</default>
+      <summary>Panel background color</summary>
+      <description>Custom panel/dock background color as #RRGGBB. Opacity is controlled separately by panel-opacity.</description>
     </key>
 
     <key name="enable-blur" type="b">

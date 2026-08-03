@@ -3,6 +3,7 @@
  */
 
 import Adw from 'gi://Adw';
+import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk';
 
@@ -37,7 +38,7 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
 
         const group = new Adw.PreferencesGroup({
             title: _('Panel look'),
-            description: _('Size, corners, opacity, and blur'),
+            description: _('Size, corners, color, opacity, and blur'),
         });
         page.add(group);
 
@@ -47,6 +48,9 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
         group.add(this._spinRow(settings, 'icon-size', _('Icon size'),
             _('Application icon size in the taskbar'),
             16, 64, 1));
+        group.add(this._spinRow(settings, 'tray-icon-size', _('Tray icon size'),
+            _('System indicators and keyboard icon size on the right'),
+            12, 48, 1));
         group.add(this._spinRow(settings, 'panel-margin', _('Margin'),
             _('Gap from screen edges (floating dock when > 0)'),
             0, 24, 1));
@@ -55,6 +59,45 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
         group.add(this._spinRow(settings, 'panel-spacing', _('Spacing'),
             _('Padding inside the panel'),
             0, 32, 1));
+
+        group.add(this._switchRow(settings, 'use-custom-panel-color',
+            _('Custom panel color'),
+            _('Override the light/dark theme background with a chosen color')));
+
+        const colorRow = new Adw.ActionRow({
+            title: _('Panel color'),
+            subtitle: _('Dock background; opacity is set separately below'),
+        });
+        const colorButton = new Gtk.ColorDialogButton({
+            dialog: new Gtk.ColorDialog({
+                title: _('Panel color'),
+                with_alpha: false,
+            }),
+            valign: Gtk.Align.CENTER,
+        });
+        colorRow.add_suffix(colorButton);
+        colorRow.activatable_widget = colorButton;
+
+        const applyColorButton = () => {
+            const rgba = new Gdk.RGBA();
+            if (!rgba.parse(settings.get_string('panel-color')))
+                rgba.parse('#202020');
+            colorButton.set_rgba(rgba);
+        };
+        applyColorButton();
+
+        colorButton.connect('notify::rgba', () => {
+            const rgba = colorButton.get_rgba();
+            const toHex = c => Math.round(c * 255)
+                .toString(16).padStart(2, '0');
+            settings.set_string('panel-color',
+                `#${toHex(rgba.red)}${toHex(rgba.green)}${toHex(rgba.blue)}`);
+        });
+        settings.connect('changed::panel-color', applyColorButton);
+
+        settings.bind('use-custom-panel-color', colorRow, 'sensitive',
+            Gio.SettingsBindFlags.DEFAULT);
+        group.add(colorRow);
 
         const opacity = new Adw.SpinRow({
             title: _('Opacity'),
@@ -106,6 +149,8 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
         contents.add(this._switchRow(settings, 'show-system-indicators',
             _('System indicators'),
             _('Quick Settings: Wi-Fi, Bluetooth, volume, brightness, battery, power')));
+
+        page.add(this._buildItemOrderGroup(settings));
 
         const keyboardGroup = new Adw.PreferencesGroup({
             title: _('Keyboard layout'),
@@ -262,6 +307,110 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
             _('System indicators remain on the primary monitor only')));
 
         return page;
+    }
+
+    /**
+     * Reorderable right-side items (clock / system / keyboard).
+     *
+     * @param {Gio.Settings} settings
+     * @returns {Adw.PreferencesGroup}
+     */
+    _buildItemOrderGroup(settings) {
+        const DEFAULT = ['clock', 'system', 'keyboard'];
+        const LABELS = {
+            clock: _('Clock'),
+            system: _('System indicators'),
+            keyboard: _('Keyboard layout'),
+        };
+
+        const group = new Adw.PreferencesGroup({
+            title: _('Item order'),
+            description: _('Order of items on the right side of the panel'),
+        });
+
+        const rows = new Map();
+
+        const normalize = order => {
+            const known = new Set(DEFAULT);
+            const seen = new Set();
+            const result = [];
+            for (const id of order ?? []) {
+                if (!known.has(id) || seen.has(id))
+                    continue;
+                seen.add(id);
+                result.push(id);
+            }
+            for (const id of DEFAULT) {
+                if (!seen.has(id))
+                    result.push(id);
+            }
+            return result;
+        };
+
+        const readOrder = () =>
+            normalize(settings.get_strv('panel-item-order'));
+
+        const writeOrder = order => {
+            settings.set_strv('panel-item-order', order);
+        };
+
+        const move = (id, delta) => {
+            const order = readOrder();
+            const idx = order.indexOf(id);
+            const next = idx + delta;
+            if (idx < 0 || next < 0 || next >= order.length)
+                return;
+            [order[idx], order[next]] = [order[next], order[idx]];
+            writeOrder(order);
+        };
+
+        const rebuild = () => {
+            for (const row of rows.values())
+                group.remove(row);
+            rows.clear();
+
+            const order = readOrder();
+            order.forEach((id, index) => {
+                const row = new Adw.ActionRow({
+                    title: LABELS[id] ?? id,
+                });
+
+                const up = new Gtk.Button({
+                    icon_name: 'go-up-symbolic',
+                    valign: Gtk.Align.CENTER,
+                    tooltip_text: _('Move up'),
+                    sensitive: index > 0,
+                });
+                up.add_css_class('flat');
+                up.connect('clicked', () => move(id, -1));
+
+                const down = new Gtk.Button({
+                    icon_name: 'go-down-symbolic',
+                    valign: Gtk.Align.CENTER,
+                    tooltip_text: _('Move down'),
+                    sensitive: index < order.length - 1,
+                });
+                down.add_css_class('flat');
+                down.connect('clicked', () => move(id, 1));
+
+                const box = new Gtk.Box({
+                    orientation: Gtk.Orientation.HORIZONTAL,
+                    spacing: 4,
+                    valign: Gtk.Align.CENTER,
+                });
+                box.append(up);
+                box.append(down);
+                row.add_suffix(box);
+                row.set_activatable(false);
+
+                group.add(row);
+                rows.set(id, row);
+            });
+        };
+
+        rebuild();
+        settings.connect('changed::panel-item-order', rebuild);
+        return group;
     }
 
     /**

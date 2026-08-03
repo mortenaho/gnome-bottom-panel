@@ -1,9 +1,8 @@
 /**
  * flags.js — Flat rectangular country-flag assets (no emoji / no wave).
  *
- * Flags are PNG/SVG files under flags/<iso>.{png,svg}, rendered as St.Icon
- * via FileIcon so they stay sharp and strictly rectangular (approx 3:2),
- * with no emoji and no wavy / curved appearance.
+ * Primary assets are user-provided PNGs under flags/<iso>.png
+ * (e.g. US/EN and IR). SVG is only a fallback for other countries.
  */
 
 import Gio from 'gi://Gio';

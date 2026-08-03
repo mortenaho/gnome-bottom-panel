@@ -18,6 +18,7 @@ import {WorkspaceIndicator} from './indicators/workspaceIndicator.js';
 import {
     SystemTrayManager,
     SecondaryClock,
+    normalizePanelItemOrder,
 } from './indicators/systemTray.js';
 import {SevenSegmentClock} from './indicators/sevenSegmentClock.js';
 import {KeyboardLayoutIndicator} from './indicators/keyboardLayout.js';
@@ -146,42 +147,12 @@ class BottomPanel extends St.Widget {
         });
         this._centerCluster.add_child(this._taskbar);
 
-        // Clock target: Win11 puts clock on the right by default.
         const clockBox = opts.clockPosition === 'center'
             ? this._centerBox
             : this._rightBox;
 
         if (this.isPrimary) {
-            if (opts.showClock && opts.clockStyle === 'seven-segment') {
-                this._sevenSegClock = this._createSevenSegmentClock();
-                clockBox.add_child(this._sevenSegClock);
-            }
-
-            try {
-                this._systemTray = new SystemTrayManager(
-                    this._rightBox,
-                    clockBox,
-                    {
-                        showClock: opts.showClock,
-                        clockPosition: opts.clockPosition,
-                        clockStyle: opts.clockStyle,
-                        showSystemIndicators: opts.showSystemIndicators,
-                        showKeyboardLayout: opts.showKeyboardLayout,
-                    });
-                this._systemTray.enable();
-            } catch (e) {
-                console.error(`Bottom Panel: system tray setup failed: ${e}`);
-                this._systemTray?.destroy();
-                this._systemTray = null;
-            }
-
-            // Custom keyboard (flag / char / both) instead of stock label.
-            if (opts.showKeyboardLayout) {
-                this._keyboard = new KeyboardLayoutIndicator(
-                    opts.keyboardDisplayMode,
-                    opts.extensionPath ?? '');
-                this._rightBox.add_child(this._keyboard.container);
-            }
+            this._buildPrimaryTray(clockBox);
         } else if (opts.showClock) {
             if (opts.clockStyle === 'seven-segment') {
                 this._sevenSegClock = this._createSevenSegmentClock();
@@ -191,6 +162,93 @@ class BottomPanel extends St.Widget {
                 clockBox.add_child(this._secondaryClock);
             }
         }
+    }
+
+    /**
+     * Place clock / system / keyboard according to panel-item-order.
+     * When clock-position is "center", the clock is placed in the center box
+     * and skipped in the right-side order loop.
+     *
+     * @param {St.BoxLayout} clockBox
+     */
+    _buildPrimaryTray(clockBox) {
+        const opts = this._options;
+        const order = normalizePanelItemOrder(opts.panelItemOrder);
+        const clockCentered = opts.clockPosition === 'center';
+
+        try {
+            this._systemTray = new SystemTrayManager(
+                this._rightBox,
+                clockBox,
+                {
+                    showClock: opts.showClock,
+                    clockPosition: opts.clockPosition,
+                    clockStyle: opts.clockStyle,
+                    showSystemIndicators: opts.showSystemIndicators,
+                    showKeyboardLayout: opts.showKeyboardLayout,
+                    trayIconSize: opts.trayIconSize,
+                });
+            this._systemTray.prepareKeyboard();
+        } catch (e) {
+            console.error(`Bottom Panel: system tray setup failed: ${e}`);
+            this._systemTray?.destroy();
+            this._systemTray = null;
+            return;
+        }
+
+        if (clockCentered && opts.showClock)
+            this._placeClockItem(clockBox);
+
+        for (const id of order) {
+            if (id === 'clock') {
+                if (!clockCentered)
+                    this._placeClockItem(this._rightBox);
+            } else if (id === 'system') {
+                this._systemTray?.placeSystemIndicators(this._rightBox);
+            } else if (id === 'keyboard') {
+                this._placeKeyboardItem();
+            }
+        }
+
+        this._applyTrayIconSize(opts.trayIconSize);
+    }
+
+    /**
+     * @param {St.BoxLayout} box
+     */
+    _placeClockItem(box) {
+        const opts = this._options;
+        if (!opts.showClock)
+            return;
+
+        if (opts.clockStyle === 'seven-segment') {
+            this._sevenSegClock = this._createSevenSegmentClock();
+            box.add_child(this._sevenSegClock);
+        }
+
+        this._systemTray?.placeClock(box);
+    }
+
+    _placeKeyboardItem() {
+        const opts = this._options;
+        if (!opts.showKeyboardLayout)
+            return;
+
+        this._keyboard = new KeyboardLayoutIndicator(
+            opts.keyboardDisplayMode,
+            opts.extensionPath ?? '');
+        this._keyboard.setIconSize(opts.trayIconSize ?? 16);
+        this._rightBox.add_child(this._keyboard.container);
+    }
+
+    /**
+     * @param {number} size
+     */
+    _applyTrayIconSize(size) {
+        const n = Math.max(12, Math.min(48, size | 0));
+        this._rightBox.set_style(`icon-size: ${n}px;`);
+        this._systemTray?.applyTrayIconSize(n);
+        this._keyboard?.setIconSize?.(n);
     }
 
     /**
@@ -207,7 +265,7 @@ class BottomPanel extends St.Widget {
     }
 
     _applyVisuals() {
-        applyThemeClasses(this);
+        applyThemeClasses(this, this._options);
         this.add_style_class_name('win11-panel');
         const style = buildPanelInlineStyle(this._options);
         this._shell.set_style(style);
@@ -284,6 +342,7 @@ class BottomPanel extends St.Widget {
 
         this._startButton?.setIconSize?.(options.iconSize);
         this._keyboard?.setDisplayMode?.(options.keyboardDisplayMode);
+        this._applyTrayIconSize(options.trayIconSize);
 
         if (this._sevenSegClock) {
             this._sevenSegClock.setOptions({
@@ -303,6 +362,10 @@ class BottomPanel extends St.Widget {
         this._applyVisuals();
         this._positionOnMonitor();
 
+        const orderChanged =
+            JSON.stringify(normalizePanelItemOrder(prev.panelItemOrder)) !==
+            JSON.stringify(normalizePanelItemOrder(options.panelItemOrder));
+
         return prev.showWorkspaces !== options.showWorkspaces ||
             prev.showClock !== options.showClock ||
             prev.clockPosition !== options.clockPosition ||
@@ -310,7 +373,8 @@ class BottomPanel extends St.Widget {
             prev.showSystemIndicators !== options.showSystemIndicators ||
             prev.showShowAppsButton !== options.showShowAppsButton ||
             prev.showKeyboardLayout !== options.showKeyboardLayout ||
-            prev.panelMargin !== options.panelMargin;
+            prev.panelMargin !== options.panelMargin ||
+            orderChanged;
     }
 
     _onDestroy() {

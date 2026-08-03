@@ -1,8 +1,8 @@
 /**
  * keyboardLayout.js — Keyboard layout indicator with character / flat flag / both.
  *
- * Flags are bundled SVG assets (flags/*.svg): strictly rectangular, no emoji,
- * no wavy / curved “waving flag” glyphs.
+ * Flags are bundled flat PNG assets (flags/*.png) — e.g. official rectangular
+ * US and Iran images. No emoji and no wavy / curved flag glyphs.
  */
 
 import Clutter from 'gi://Clutter';
@@ -50,6 +50,7 @@ class KeyboardLayoutIndicator extends PanelMenu.Button {
 
         this._displayMode = displayMode;
         this._extensionPath = extensionPath;
+        this._iconSize = 16;
         this.add_style_class_name('bottom-panel-keyboard');
 
         this._box = new St.BoxLayout({
@@ -64,16 +65,14 @@ class KeyboardLayoutIndicator extends PanelMenu.Button {
             style_class: 'bottom-panel-kb-flag-rect',
             y_align: Clutter.ActorAlign.CENTER,
             x_align: Clutter.ActorAlign.CENTER,
-            width: 22,
-            height: 15,
         });
         this._flagIcon = new St.Icon({
             style_class: 'bottom-panel-kb-flag-icon',
-            icon_size: 22,
             y_align: Clutter.ActorAlign.CENTER,
             x_align: Clutter.ActorAlign.CENTER,
         });
         this._flagBin.set_child(this._flagIcon);
+        this._applyFlagGeometry();
 
         this._charLabel = new St.Label({
             style_class: 'bottom-panel-kb-char',
@@ -112,6 +111,34 @@ class KeyboardLayoutIndicator extends PanelMenu.Button {
         this._sync();
     }
 
+    /**
+     * Scale the flag badge (and menu flags) to match tray icon size.
+     *
+     * @param {number} size — logical width in px (height follows 3:2)
+     */
+    setIconSize(size) {
+        const next = Math.max(12, Math.min(48, size | 0));
+        if (next === this._iconSize)
+            return;
+        this._iconSize = next;
+        this._applyFlagGeometry();
+        this._rebuildMenu();
+    }
+
+    _flagMetrics() {
+        // Match provided assets (~1.9:1 US, ~1.74:1 IR) — use ~1.85:1 rectangle.
+        const w = this._iconSize;
+        const h = Math.max(8, Math.round(w / 1.85));
+        return {w, h};
+    }
+
+    _applyFlagGeometry() {
+        const {w, h} = this._flagMetrics();
+        this._flagBin.set_width(w);
+        this._flagBin.set_height(h);
+        this._flagIcon.icon_size = w;
+    }
+
     _rebuildMenu() {
         this.menu.removeAll();
 
@@ -119,6 +146,7 @@ class KeyboardLayoutIndicator extends PanelMenu.Button {
         if (!sources)
             return;
 
+        const {w, h} = this._flagMetrics();
         const ids = Object.keys(sources).sort((a, b) => Number(a) - Number(b));
         for (const id of ids) {
             const source = sources[id];
@@ -131,12 +159,12 @@ class KeyboardLayoutIndicator extends PanelMenu.Button {
             if (gicon) {
                 const iconBin = new St.Bin({
                     style_class: 'bottom-panel-kb-flag-rect',
-                    width: 22,
-                    height: 15,
+                    width: w,
+                    height: h,
                 });
                 iconBin.set_child(new St.Icon({
                     gicon,
-                    icon_size: 22,
+                    icon_size: w,
                     style_class: 'bottom-panel-kb-flag-icon',
                 }));
                 row.add_child(iconBin);

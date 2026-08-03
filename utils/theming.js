@@ -43,12 +43,49 @@ export function isDarkTheme() {
 }
 
 /**
+ * Parse #RRGGBB into RGB components, or null if invalid.
+ *
+ * @param {string} hex
+ * @returns {{r: number, g: number, b: number}|null}
+ */
+export function parseHexColor(hex) {
+    const match = /^#?([0-9a-fA-F]{6})$/.exec(String(hex ?? '').trim());
+    if (!match)
+        return null;
+    const n = parseInt(match[1], 16);
+    return {
+        r: (n >> 16) & 255,
+        g: (n >> 8) & 255,
+        b: n & 255,
+    };
+}
+
+/**
+ * Relative luminance heuristic for choosing light vs dark chrome (text/icons).
+ *
+ * @param {string} hex
+ * @returns {boolean}
+ */
+export function isHexColorDark(hex) {
+    const rgb = parseHexColor(hex);
+    if (!rgb)
+        return isDarkTheme();
+    // Rec. 709 luma
+    const luma = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
+    return luma < 0.5;
+}
+
+/**
  * Apply light/dark style classes on a panel actor.
+ * When a custom panel color is active, chrome contrast follows that color.
  *
  * @param {St.Widget} actor
+ * @param {{useCustomPanelColor?: boolean, panelColor?: string}} [options]
  */
-export function applyThemeClasses(actor) {
-    const dark = isDarkTheme();
+export function applyThemeClasses(actor, options = {}) {
+    const dark = options.useCustomPanelColor && options.panelColor
+        ? isHexColorDark(options.panelColor)
+        : isDarkTheme();
     actor.remove_style_class_name('bottom-panel-light');
     actor.remove_style_class_name('bottom-panel-dark');
     actor.add_style_class_name(dark ? 'bottom-panel-dark' : 'bottom-panel-light');
@@ -89,14 +126,28 @@ export function watchColorScheme(callback) {
  *   panelOpacity: number,
  *   panelSpacing: number,
  *   panelMargin: number,
+ *   useCustomPanelColor?: boolean,
+ *   panelColor?: string,
  * }} options
  * @returns {string}
  */
 export function buildPanelInlineStyle(options) {
-    const dark = isDarkTheme();
-    const bg = dark
-        ? `rgba(32, 32, 32, ${options.panelOpacity})`
-        : `rgba(243, 243, 243, ${options.panelOpacity})`;
+    const customRgb = options.useCustomPanelColor
+        ? parseHexColor(options.panelColor)
+        : null;
+    const dark = customRgb
+        ? isHexColorDark(options.panelColor)
+        : isDarkTheme();
+
+    let bg;
+    if (customRgb) {
+        bg = `rgba(${customRgb.r}, ${customRgb.g}, ${customRgb.b}, ${options.panelOpacity})`;
+    } else {
+        bg = dark
+            ? `rgba(32, 32, 32, ${options.panelOpacity})`
+            : `rgba(243, 243, 243, ${options.panelOpacity})`;
+    }
+
     const border = dark
         ? 'rgba(255, 255, 255, 0.06)'
         : 'rgba(0, 0, 0, 0.08)';
