@@ -16,6 +16,7 @@ rsync -a --delete \
   --exclude '*.zip' \
   --exclude 'Makefile' \
   --exclude 'install.sh' \
+  --exclude 'pack.sh' \
   --exclude '.gitignore' \
   --exclude 'README.md' \
   "${ROOT}/" "${EXT_DIR}/"

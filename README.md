@@ -2,6 +2,8 @@
 
 Bottom dock/panel for **GNOME Shell 50**. Hides the default top bar and builds a bottom panel that reuses native Shell indicators (Quick Settings, clock/calendar, battery, network, audio) plus favorites and running apps.
 
+![Bottom Panel screenshot](screenshot.png)
+
 ## Features
 
 - Hides the default GNOME top panel
@@ -9,9 +11,12 @@ Bottom dock/panel for **GNOME Shell 50**. Hides the default top bar and builds a
 - Running apps + favorites via stock `Dash.Dash`
 - Clock / calendar / notifications via native `dateMenu`
 - Quick Settings (network, Bluetooth, volume, brightness, battery, power menu)
-- Optional workspace indicator and keyboard layout indicator
-- Dark / light theme adaptation
+- Adjustable tray icon size and right-side item order (clock / keyboard / system)
+- Optional workspace indicator and keyboard layout indicator (flat flags)
+- Configurable Apps (Start) button icon
+- Dark / light theme adaptation, optional custom panel color
 - Multi-monitor panels (system indicators on primary only)
+- Optional auto-hide (slide away when unused; reveal from the bottom edge)
 - Preferences UI (Appearance / Layout / Behavior)
 
 ## Requirements
@@ -42,11 +47,12 @@ gnome-extensions info bottom-panel@mortenaho.github.io
 ### Pack for extensions.gnome.org
 
 ```bash
-make pack
+./pack.sh
 # → bottom-panel@mortenaho.github.io.zip
 ```
 
-Upload that zip on [extensions.gnome.org](https://extensions.gnome.org/). Do not include build scripts in the upload; `make pack` already excludes them.
+Upload that zip on [extensions.gnome.org](https://extensions.gnome.org/upload/).  
+Also upload `screenshot.png` on the extension page after the first approved version.
 
 ## Debugging
 

@@ -118,6 +118,8 @@ export function getPanelOptions() {
         hideOverviewDash: s.get_boolean('hide-overview-dash'),
         animateStartup: s.get_boolean('animate-startup'),
         scrollPanelWorkspaces: s.get_boolean('scroll-panel-workspaces'),
+        autohide: s.get_boolean('autohide'),
+        autohideDelay: s.get_int('autohide-delay'),
         showKeyboardLayout: s.get_boolean('show-keyboard-layout'),
         keyboardDisplayMode: s.get_string('keyboard-display-mode'),
     };

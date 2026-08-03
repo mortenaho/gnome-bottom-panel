@@ -25,7 +25,7 @@
     </key>
 
     <key name="panel-item-order" type="as">
-      <default>['clock', 'system', 'keyboard']</default>
+      <default>['clock', 'keyboard', 'system']</default>
       <summary>Right-side item order</summary>
       <description>Order of right-side panel items. Known ids: clock, system, keyboard.</description>
     </key>
@@ -240,6 +240,19 @@
       <default>true</default>
       <summary>Scroll to switch workspaces</summary>
       <description>Switch workspaces by scrolling on empty panel areas.</description>
+    </key>
+
+    <key name="autohide" type="b">
+      <default>false</default>
+      <summary>Auto-hide panel</summary>
+      <description>Hide the panel when the pointer leaves it. Move the pointer to the bottom edge of the screen to show it again. Maximized windows use the full screen height while auto-hide is enabled.</description>
+    </key>
+
+    <key name="autohide-delay" type="i">
+      <default>400</default>
+      <summary>Auto-hide delay</summary>
+      <description>Milliseconds to wait after the pointer leaves the panel before hiding it.</description>
+      <range min="0" max="5000"/>
     </key>
 
     <key name="show-keyboard-layout" type="b">

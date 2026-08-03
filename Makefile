@@ -19,6 +19,7 @@ install: schemas
 		--exclude '*.zip' \
 		--exclude 'Makefile' \
 		--exclude 'install.sh' \
+		--exclude 'pack.sh' \
 		--exclude '.gitignore' \
 		--exclude 'README.md' \
 		./ "$(EXT_DIR)/"
@@ -42,6 +43,7 @@ pack: schemas
 		prefs.js \
 		stylesheet.css \
 		LICENSE \
+		screenshot.png \
 		indicators \
 		widgets \
 		utils \

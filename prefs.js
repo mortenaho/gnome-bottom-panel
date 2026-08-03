@@ -549,7 +549,7 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
      * @returns {Adw.PreferencesGroup}
      */
     _buildItemOrderGroup(settings) {
-        const DEFAULT = ['clock', 'system', 'keyboard'];
+        const DEFAULT = ['clock', 'keyboard', 'system'];
         const LABELS = {
             clock: _('Clock'),
             system: _('System indicators'),
@@ -676,6 +676,20 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
         group.add(this._switchRow(settings, 'animate-startup',
             _('Startup animation'),
             _('Slide the panel in when enabled')));
+
+        const hideGroup = new Adw.PreferencesGroup({
+            title: _('Auto-hide'),
+            description: _('Slide the panel away when unused; move the pointer to the bottom edge to show it'),
+        });
+        page.add(hideGroup);
+
+        hideGroup.add(this._switchRow(settings, 'autohide',
+            _('Auto-hide panel'),
+            _('Hide the panel when the pointer leaves; maximized windows use the full height')));
+        hideGroup.add(this._spinRow(settings, 'autohide-delay',
+            _('Hide delay'),
+            _('Milliseconds to wait before hiding after the pointer leaves'),
+            0, 5000, 50));
 
         return page;
     }

@@ -14,12 +14,14 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 /** Role names managed by Main.panel._ensureIndicator / statusArea. */
 const SYSTEM_ROLES = [
     'quickSettings',
+    'a11y',
     // 'keyboard' — replaced by indicators/keyboardLayout.js
-    // a11y / dwellClick / screenRecording / screenSharing stay on the stock top panel (hidden)
+    'dwellClick',
+    // screenRecording / screenSharing stay on the stock top panel (hidden)
 ];
 
 /** Default right-side item order (prefs: panel-item-order). */
-export const DEFAULT_PANEL_ITEM_ORDER = ['clock', 'system', 'keyboard'];
+export const DEFAULT_PANEL_ITEM_ORDER = ['clock', 'keyboard', 'system'];
 
 /**
  * Normalize a panel-item-order strv: known ids only, unique, with defaults filled.

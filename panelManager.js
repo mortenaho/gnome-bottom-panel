@@ -80,6 +80,8 @@ export class PanelManager {
                 'hide-overview-dash',
                 'animate-startup',
                 'scroll-panel-workspaces',
+                'autohide',
+                'autohide-delay',
                 'show-keyboard-layout',
                 'keyboard-display-mode',
             ], () => this._onSettingsChanged());

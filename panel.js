@@ -19,6 +19,7 @@ import {SevenSegmentClock} from './indicators/sevenSegmentClock.js';
 import {KeyboardLayoutIndicator} from './indicators/keyboardLayout.js';
 import {Taskbar} from './widgets/taskbar.js';
 import {StartButton} from './widgets/startButton.js';
+import {AutohideController} from './utils/autohide.js';
 import {
     applyThemeClasses,
     applyBlurEffect,
@@ -53,6 +54,8 @@ class BottomPanel extends St.Widget {
         this._keyboard = null;
         this._disposeColorWatch = null;
         this._chromeTracked = false;
+        this._affectsStruts = true;
+        this._autohide = null;
 
         // Panel chrome is always LTR so left/center/right stay in fixed
         // screen positions even when the session language is RTL.
@@ -142,7 +145,12 @@ class BottomPanel extends St.Widget {
             'workareas-changed', () => this._positionOnMonitor(),
             this);
 
-        if (this._options.animateStartup)
+        this._autohide = new AutohideController(this);
+        this._autohide.update(
+            !!this._options.autohide,
+            this._options.autohideDelay ?? 400);
+
+        if (this._options.animateStartup && !this._options.autohide)
             this._animateIn();
 
         this.connect('destroy', () => this._onDestroy());
@@ -406,6 +414,7 @@ class BottomPanel extends St.Widget {
         this.set_position(x, y);
         this.set_size(width, height);
         this._balanceSideColumns();
+        this._autohide?.onMonitorChanged();
     }
 
     _trackChrome() {
@@ -413,10 +422,29 @@ class BottomPanel extends St.Widget {
             return;
 
         Main.layoutManager.addChrome(this, {
-            affectsStruts: true,
+            affectsStruts: this._affectsStruts,
             trackFullscreen: true,
         });
         this._chromeTracked = true;
+    }
+
+    /**
+     * Update whether maximized windows reserve space for the panel.
+     * Auto-hide disables struts so windows can use the full screen height.
+     *
+     * @param {boolean} affectsStruts
+     */
+    _setAffectsStruts(affectsStruts) {
+        if (this._affectsStruts === affectsStruts)
+            return;
+
+        this._affectsStruts = affectsStruts;
+        if (!this._chromeTracked)
+            return;
+
+        Main.layoutManager.removeChrome(this);
+        this._chromeTracked = false;
+        this._trackChrome();
     }
 
     _untrackChrome() {
@@ -484,6 +512,10 @@ class BottomPanel extends St.Widget {
         this._applyVisuals();
         this._positionOnMonitor();
 
+        this._autohide?.update(
+            !!options.autohide,
+            options.autohideDelay ?? 400);
+
         const orderChanged =
             JSON.stringify(normalizePanelItemOrder(prev.panelItemOrder)) !==
             JSON.stringify(normalizePanelItemOrder(options.panelItemOrder));
@@ -503,6 +535,9 @@ class BottomPanel extends St.Widget {
         global.display.disconnectObject(this);
         this._disposeColorWatch?.();
         this._disposeColorWatch = null;
+
+        this._autohide?.destroy();
+        this._autohide = null;
 
         this._systemTray?.destroy();
         this._systemTray = null;
