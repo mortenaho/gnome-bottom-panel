@@ -1,0 +1,137 @@
+/* stylesheet.css — Bottom Panel visuals (light / dark + chrome polish) */
+
+.bottom-panel {
+    background-color: transparent;
+}
+
+.bottom-panel-shell {
+    spacing: 8px;
+}
+
+.bottom-panel-left,
+.bottom-panel-center,
+.bottom-panel-right {
+    spacing: 6px;
+}
+
+/* —— Theme variants (classes toggled from utils/theming.js) —— */
+
+.bottom-panel-dark .bottom-panel-shell {
+    color: #f0f0f0;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.bottom-panel-light .bottom-panel-shell {
+    color: #1c1c1c;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+}
+
+/* —— Taskbar / Dash —— */
+
+.bottom-panel-dash,
+.bottom-panel-taskbar {
+    spacing: 2px;
+    background: transparent;
+}
+
+.bottom-panel-app-icon {
+    border-radius: 10px;
+    padding: 2px;
+    transition-duration: 120ms;
+}
+
+.bottom-panel-app-icon:hover {
+    background-color: rgba(128, 128, 128, 0.22);
+}
+
+.bottom-panel-app-icon:active,
+.bottom-panel-app-icon:checked {
+    background-color: rgba(128, 128, 128, 0.32);
+}
+
+.bottom-panel-dark .bottom-panel-app-icon:hover {
+    background-color: rgba(255, 255, 255, 0.10);
+}
+
+.bottom-panel-light .bottom-panel-app-icon:hover {
+    background-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Running-dot inherited from Dash; tint slightly for contrast */
+.bottom-panel-app-icon .dash-item-container .overview-icon {
+    border-radius: 10px;
+}
+
+/* —— Workspace dots —— */
+
+.bottom-panel-ws-indicator {
+    spacing: 6px;
+    padding: 0 8px;
+}
+
+.bottom-panel-ws-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 99px;
+    background-color: currentColor;
+    min-width: 8px;
+    min-height: 8px;
+}
+
+.bottom-panel-dark .bottom-panel-ws-dot {
+    background-color: #e8e8e8;
+}
+
+.bottom-panel-light .bottom-panel-ws-dot {
+    background-color: #333333;
+}
+
+/* —— Clock (secondary monitors) —— */
+
+.bottom-panel-clock {
+    border-radius: 10px;
+    padding: 0 10px;
+}
+
+.bottom-panel-clock:hover {
+    background-color: rgba(128, 128, 128, 0.2);
+}
+
+.bottom-panel-clock-label {
+    font-weight: 600;
+    font-size: 0.95em;
+}
+
+/* —— Native indicators inside the bottom panel —— */
+
+.bottom-panel .panel-button {
+    border-radius: 10px;
+    -natural-hpadding: 8px;
+    -minimum-hpadding: 4px;
+}
+
+.bottom-panel .panel-button:hover,
+.bottom-panel .panel-button:active,
+.bottom-panel .panel-button:overview,
+.bottom-panel .panel-button:focus,
+.bottom-panel .panel-button:checked {
+    background-color: rgba(128, 128, 128, 0.22);
+}
+
+.bottom-panel-dark .panel-button:hover {
+    background-color: rgba(255, 255, 255, 0.10);
+}
+
+.bottom-panel-light .panel-button:hover {
+    background-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Quick Settings / date menu open upward; tighten panel-menu look */
+.bottom-panel .panel-status-indicators-box {
+    spacing: 4px;
+}
+
+/* Reduce oversized top-bar padding that looks odd on a floating dock */
+.bottom-panel #panelClock {
+    font-weight: 600;
+}

@@ -1,0 +1,12 @@
+{
+  "uuid": "bottom-panel@gnome-extension.local",
+  "name": "Bottom Panel",
+  "description": "Replaces the GNOME top panel with a modern bottom dock/panel. Moves system indicators (Quick Settings, clock/calendar, battery, network, audio) into the bottom panel and adds favorites and running applications, with multi-monitor and HiDPI support.",
+  "shell-version": [
+    "50"
+  ],
+  "settings-schema": "org.gnome.shell.extensions.bottom-panel",
+  "gettext-domain": "bottom-panel",
+  "url": "https://github.com/mortenaho/gnome-bottom-panel",
+  "version": 1
+}

@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.bottom-panel"
+          path="/org/gnome/shell/extensions/bottom-panel/">
+
+    <key name="panel-height" type="i">
+      <default>48</default>
+      <summary>Panel height</summary>
+      <description>Height of the bottom panel in logical pixels (scaled for HiDPI).</description>
+      <range min="32" max="96"/>
+    </key>
+
+    <key name="icon-size" type="i">
+      <default>32</default>
+      <summary>App icon size</summary>
+      <description>Size of application icons in the taskbar, in logical pixels.</description>
+      <range min="16" max="64"/>
+    </key>
+
+    <key name="panel-spacing" type="i">
+      <default>8</default>
+      <summary>Panel spacing</summary>
+      <description>Horizontal spacing between panel sections and icons, in logical pixels.</description>
+      <range min="0" max="32"/>
+    </key>
+
+    <key name="panel-position" type="s">
+      <default>"bottom"</default>
+      <summary>Panel position</summary>
+      <description>Edge of the screen where the panel is placed. Only "bottom" is supported.</description>
+      <choices>
+        <choice value="bottom"/>
+      </choices>
+    </key>
+
+    <key name="panel-margin" type="i">
+      <default>8</default>
+      <summary>Panel margin</summary>
+      <description>Margin between the panel and the screen edges, in logical pixels. Creates a floating dock look when greater than zero.</description>
+      <range min="0" max="24"/>
+    </key>
+
+    <key name="border-radius" type="i">
+      <default>16</default>
+      <summary>Border radius</summary>
+      <description>Corner radius of the panel background, in logical pixels.</description>
+      <range min="0" max="32"/>
+    </key>
+
+    <key name="panel-opacity" type="d">
+      <default>0.85</default>
+      <summary>Panel opacity</summary>
+      <description>Background opacity of the panel (0.0–1.0).</description>
+      <range min="0.3" max="1.0"/>
+    </key>
+
+    <key name="enable-blur" type="b">
+      <default>true</default>
+      <summary>Enable background blur</summary>
+      <description>Apply a blur effect behind the panel when the compositor supports it.</description>
+    </key>
+
+    <key name="show-favorites" type="b">
+      <default>true</default>
+      <summary>Show favorites</summary>
+      <description>Show favorite applications in the taskbar.</description>
+    </key>
+
+    <key name="show-running-apps" type="b">
+      <default>true</default>
+      <summary>Show running applications</summary>
+      <description>Show running application icons in the taskbar.</description>
+    </key>
+
+    <key name="show-show-apps-button" type="b">
+      <default>true</default>
+      <summary>Show Apps button</summary>
+      <description>Show the grid button that opens the application overview.</description>
+    </key>
+
+    <key name="show-workspaces" type="b">
+      <default>true</default>
+      <summary>Show workspace indicator</summary>
+      <description>Show a workspace indicator on the panel.</description>
+    </key>
+
+    <key name="show-clock" type="b">
+      <default>true</default>
+      <summary>Show clock</summary>
+      <description>Show the GNOME date/clock menu (calendar and notifications) on the panel.</description>
+    </key>
+
+    <key name="clock-position" type="s">
+      <default>"center"</default>
+      <summary>Clock position</summary>
+      <description>Where to place the clock on the panel: "center" or "right".</description>
+      <choices>
+        <choice value="center"/>
+        <choice value="right"/>
+      </choices>
+    </key>
+
+    <key name="show-system-indicators" type="b">
+      <default>true</default>
+      <summary>Show system indicators</summary>
+      <description>Move Quick Settings and related system indicators into the bottom panel.</description>
+    </key>
+
+    <key name="multi-monitor" type="b">
+      <default>true</default>
+      <summary>Multi-monitor panels</summary>
+      <description>Create a bottom panel on every monitor. System indicators stay on the primary monitor.</description>
+    </key>
+
+    <key name="isolate-monitors" type="b">
+      <default>false</default>
+      <summary>Isolate monitors</summary>
+      <description>Show only windows belonging to each monitor in that monitor's taskbar.</description>
+    </key>
+
+    <key name="isolate-workspaces" type="b">
+      <default>false</default>
+      <summary>Isolate workspaces</summary>
+      <description>Show only windows belonging to the current workspace in the taskbar.</description>
+    </key>
+
+    <key name="hide-overview-dash" type="b">
+      <default>true</default>
+      <summary>Hide overview dash</summary>
+      <description>Hide the default dash inside the Activities overview.</description>
+    </key>
+
+    <key name="animate-startup" type="b">
+      <default>true</default>
+      <summary>Animate panel on startup</summary>
+      <description>Slide the panel in when the extension is enabled.</description>
+    </key>
+
+    <key name="scroll-panel-workspaces" type="b">
+      <default>true</default>
+      <summary>Scroll to switch workspaces</summary>
+      <description>Switch workspaces by scrolling on empty panel areas.</description>
+    </key>
+
+  </schema>
+</schemalist>

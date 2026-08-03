@@ -1,0 +1,106 @@
+/**
+ * extension.js — Extension entry point (GNOME Shell 45+ ESM API).
+ *
+ * Lifecycle:
+ *   enable()  → init settings, disable Ubuntu Dock if present, create panels
+ *   disable() → destroy panels, restore top panel / overview dash / dock
+ *
+ * Hot reload:
+ *   X11: Alt+F2 → r
+ *   Wayland (Ubuntu default): disable/enable via gnome-extensions, or log out
+ */
+
+import GLib from 'gi://GLib';
+
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
+
+import {PanelManager} from './panelManager.js';
+import {
+    initSettings,
+    clearSettings,
+} from './utils/settings.js';
+import {
+    disableConflictingExtension,
+} from './utils/chrome.js';
+
+const CONFLICTING_DOCKS = [
+    'ubuntu-dock@ubuntu.com',
+    'dash-to-dock@micxgx.gmail.com',
+    'dash-in-panel@fthx',
+];
+
+export default class BottomPanelExtension extends Extension {
+    constructor(metadata) {
+        super(metadata);
+        this._panelManager = null;
+        this._dockRestorers = [];
+        this._enableTimeout = 0;
+    }
+
+    async enable() {
+        console.debug(`Bottom Panel: enabling (${this.metadata.uuid})`);
+
+        const settings = this.getSettings();
+        initSettings(settings);
+
+        // Do NOT disable docks until the bottom panel is successfully created.
+        // Otherwise a crash during setup leaves the user with no chrome.
+        this._dockRestorers = [];
+
+        const start = () => {
+            this._enableTimeout = 0;
+            try {
+                this._panelManager = new PanelManager();
+                this._panelManager.enable();
+            } catch (e) {
+                console.error(`Bottom Panel: failed to start: ${e}`);
+                this._panelManager?.disable();
+                this._panelManager = null;
+                return GLib.SOURCE_REMOVE;
+            }
+
+            // Only now disable conflicting docks.
+            for (const uuid of CONFLICTING_DOCKS) {
+                const restore = disableConflictingExtension(uuid);
+                this._dockRestorers.push(restore);
+            }
+            return GLib.SOURCE_REMOVE;
+        };
+
+        // Wait until layoutManager has monitors after login/startup.
+        if (Main.layoutManager._startingUp) {
+            Main.layoutManager.connectObject(
+                'startup-complete', () => {
+                    Main.layoutManager.disconnectObject(this);
+                    // Defer one idle so statusArea menus are fully constructed.
+                    this._enableTimeout = GLib.idle_add(
+                        GLib.PRIORITY_DEFAULT_IDLE, start);
+                },
+                this);
+        } else {
+            this._enableTimeout = GLib.idle_add(
+                GLib.PRIORITY_DEFAULT_IDLE, start);
+        }
+    }
+
+    disable() {
+        console.debug(`Bottom Panel: disabling (${this.metadata.uuid})`);
+
+        if (this._enableTimeout) {
+            GLib.Source.remove(this._enableTimeout);
+            this._enableTimeout = 0;
+        }
+
+        Main.layoutManager.disconnectObject(this);
+
+        this._panelManager?.disable();
+        this._panelManager = null;
+
+        for (const restore of this._dockRestorers)
+            restore();
+        this._dockRestorers = [];
+
+        clearSettings();
+    }
+}
