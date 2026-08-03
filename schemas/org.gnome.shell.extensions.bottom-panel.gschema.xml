@@ -245,13 +245,13 @@
     <key name="autohide" type="b">
       <default>false</default>
       <summary>Auto-hide panel</summary>
-      <description>Intellihide: keep the panel visible on the desktop and when no window is maximized. When a maximized or fullscreen window is present, hide the panel after the pointer leaves and reveal it from the bottom edge. Maximized windows use the full screen height while auto-hide is enabled.</description>
+      <description>Mac Dock–style: hide the panel whenever the pointer leaves it, and reveal from the bottom screen edge. Windows use the full screen height while auto-hide is enabled. The panel stays visible in Overview and modal dialogs.</description>
     </key>
 
     <key name="autohide-delay" type="i">
       <default>400</default>
       <summary>Auto-hide delay</summary>
-      <description>Milliseconds to wait after the pointer leaves the panel before hiding it.</description>
+      <description>Milliseconds to wait after the pointer leaves the panel before hiding it. Set to 0 for immediate hide.</description>
       <range min="0" max="5000"/>
     </key>
 

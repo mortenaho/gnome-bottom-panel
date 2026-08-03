@@ -1,7 +1,7 @@
 {
   "uuid": "bottom-panel@mortenaho.github.io",
   "name": "Bottom Panel",
-  "description": "Replaces the GNOME top panel with a modern bottom dock/panel.\n\n• Native Quick Settings, clock/calendar, battery, network, and audio\n• Favorites and running applications (taskbar)\n• Configurable tray icon size and right-side item order\n• Keyboard layout indicator with flat country flags\n• Optional seven-segment clock, workspaces, blur, and multi-monitor panels\n• Optional auto-hide with configurable delay\n• Appearance preferences: height, icon sizes, margin, color, opacity",
+  "description": "Replaces the GNOME top panel with a modern bottom dock/panel.\n\n• Native Quick Settings, clock/calendar, battery, network, and audio\n• Favorites and running applications (taskbar)\n• Configurable tray icon size and right-side item order\n• Keyboard layout indicator with flat country flags\n• Optional seven-segment clock, workspaces, blur, and multi-monitor panels\n• Optional Mac Dock–style auto-hide with configurable hide delay\n• Appearance preferences: height, icon sizes, margin, color, opacity",
   "shell-version": [
     "50"
   ],
