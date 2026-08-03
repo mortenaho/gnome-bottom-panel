@@ -174,13 +174,14 @@
     padding: 2px 0;
 }
 
-/* No border — size filled by background-image at runtime */
+/* Clipped flag chip — size locked in JS; never paint outside allocation */
 .bottom-panel-kb-flag-rect {
     border: none;
     border-radius: 0;
     padding: 0;
     margin: 0;
     background-color: transparent;
+    overflow: hidden;
 }
 
 .bottom-panel-kb-char {
