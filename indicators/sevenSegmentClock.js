@@ -28,7 +28,62 @@ const DIGIT_SEGMENTS = [
     ['a', 'b', 'c', 'd', 'f', 'g'],        // 9
 ];
 
-const LED_COLORS = new Set(['red', 'green', 'blue', 'amber']);
+const LED_PRESETS = {
+    red: '#ff3b30',
+    green: '#34c759',
+    blue: '#0a84ff',
+    amber: '#ff9f0a',
+    white: '#ffffff',
+};
+
+/**
+ * Normalize a stored LED color to `#rrggbb`.
+ *
+ * @param {string} value
+ * @returns {string}
+ */
+export function normalizeLedColor(value) {
+    const raw = String(value || '').trim().toLowerCase();
+    if (LED_PRESETS[raw])
+        return LED_PRESETS[raw];
+
+    if (/^#[0-9a-f]{6}$/.test(raw))
+        return raw;
+
+    if (/^#[0-9a-f]{3}$/.test(raw)) {
+        return `#${raw[1]}${raw[1]}${raw[2]}${raw[2]}${raw[3]}${raw[3]}`;
+    }
+
+    return LED_PRESETS.red;
+}
+
+/**
+ * @param {string} hex
+ * @param {number} alpha
+ * @returns {string}
+ */
+function hexToRgba(hex, alpha) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/**
+ * @param {string} hex
+ * @returns {string}
+ */
+function litSegmentStyle(hex) {
+    return `background-color: ${hex}; box-shadow: 0 0 4px ${hexToRgba(hex, 0.55)};`;
+}
+
+/**
+ * @param {string} hex
+ * @returns {string}
+ */
+function litDotStyle(hex) {
+    return `background-color: ${hex}; box-shadow: 0 0 3px ${hexToRgba(hex, 0.45)};`;
+}
 
 /**
  * @param {string} name
@@ -40,6 +95,64 @@ function createSegment(name) {
         x_expand: false,
         y_expand: false,
     });
+}
+
+const HORIZONTAL_SEGS = new Set(['a', 'g', 'd']);
+
+/**
+ * @param {number} thickness
+ * @returns {{hLen: number, vLen: number, digitW: number, digitH: number, gap: number, dot: number}}
+ */
+function geometryForThickness(thickness) {
+    const t = Math.max(1, Math.min(8, thickness | 0));
+    const hLen = Math.max(6, Math.round(5 * t));
+    const vLen = Math.max(4, Math.round(3.5 * t));
+    const gap = Math.max(2, Math.round(2 * t));
+    const digitW = hLen + 2 * t + gap;
+    const digitH = 3 * t + 2 * vLen + 4;
+    const dot = Math.max(2, t);
+    return {t, hLen, vLen, digitW, digitH, gap, dot};
+}
+
+/**
+ * @param {St.BoxLayout} digit
+ * @param {number} thickness
+ */
+function applyDigitGeometry(digit, thickness) {
+    const g = geometryForThickness(thickness);
+    digit.set_style(`width: ${g.digitW}px; height: ${g.digitH}px;`);
+
+    for (const [name, seg] of Object.entries(digit._segments)) {
+        if (HORIZONTAL_SEGS.has(name)) {
+            seg.set_size(g.hLen, g.t);
+        } else {
+            seg.set_size(g.t, g.vLen);
+        }
+    }
+
+    for (const row of digit._vRows) {
+        row.set_style(`height: ${g.vLen}px;`);
+        for (const child of row.get_children()) {
+            if ((child.style_class || '').includes('seven-seg-gap'))
+                child.set_style(`width: ${g.gap}px; min-width: ${g.gap}px;`);
+        }
+    }
+}
+
+/**
+ * @param {St.BoxLayout} colon
+ * @param {number} thickness
+ */
+function applyColonGeometry(colon, thickness) {
+    const g = geometryForThickness(thickness);
+    colon.set_style(`width: ${g.dot + 4}px;`);
+    for (const child of colon.get_children()) {
+        if ((child.style_class || '').includes('seven-seg-colon-spacer')) {
+            child.set_style(`height: ${g.vLen}px;`);
+            continue;
+        }
+        child.set_size(g.dot, g.dot);
+    }
 }
 
 /**
@@ -106,23 +219,28 @@ function createDigit() {
     digit.add_child(bottom);
 
     digit._segments = segments;
+    digit._vRows = [upper, lower];
     return digit;
 }
 
 /**
  * @param {St.Widget} digit
  * @param {number} value — 0–9, or -1 to blank
+ * @param {string} hex
  */
-function setDigitValue(digit, value) {
+function setDigitValue(digit, value, hex) {
     const on = value >= 0 && value <= 9
         ? new Set(DIGIT_SEGMENTS[value])
         : new Set();
 
     for (const [name, seg] of Object.entries(digit._segments)) {
-        if (on.has(name))
+        if (on.has(name)) {
             seg.add_style_class_name('on');
-        else
+            seg.set_style(litSegmentStyle(hex));
+        } else {
             seg.remove_style_class_name('on');
+            seg.set_style(null);
+        }
     }
 }
 
@@ -167,7 +285,8 @@ class SevenSegmentClock extends St.Button {
 
         this._format = 'hm';
         this._colonBlink = true;
-        this._ledColor = 'red';
+        this._ledColor = LED_PRESETS.red;
+        this._thickness = 2;
         this._hourFormat = '24';
         this._tickId = 0;
         this._colonLit = true;
@@ -203,6 +322,7 @@ class SevenSegmentClock extends St.Button {
      *   colonBlink?: boolean,
      *   ledColor?: string,
      *   hourFormat?: string,
+     *   thickness?: number,
      * }} options
      */
     setOptions(options = {}) {
@@ -215,24 +335,28 @@ class SevenSegmentClock extends St.Button {
         }
         if (typeof options.colonBlink === 'boolean')
             this._colonBlink = options.colonBlink;
-        if (options.ledColor && LED_COLORS.has(options.ledColor))
-            this._ledColor = options.ledColor;
+        if (options.ledColor)
+            this._ledColor = normalizeLedColor(options.ledColor);
+        if (typeof options.thickness === 'number' && Number.isFinite(options.thickness))
+            this._thickness = Math.max(1, Math.min(8, Math.round(options.thickness)));
         if (options.hourFormat === '12' || options.hourFormat === '24') {
             if (this._hourFormat !== options.hourFormat)
                 this._ampm.visible = options.hourFormat === '12';
             this._hourFormat = options.hourFormat;
         }
 
-        this._applyLedColor();
         if (rebuild || this._digits.length === 0)
             this._rebuildFace();
+        else
+            this._applyGeometry();
         this._syncTime();
     }
 
-    _applyLedColor() {
-        for (const color of LED_COLORS)
-            this.remove_style_class_name(`led-${color}`);
-        this.add_style_class_name(`led-${this._ledColor}`);
+    _applyGeometry() {
+        for (const digit of this._digits)
+            applyDigitGeometry(digit, this._thickness);
+        for (const colon of this._colons)
+            applyColonGeometry(colon, this._thickness);
     }
 
     _rebuildFace() {
@@ -267,6 +391,7 @@ class SevenSegmentClock extends St.Button {
         this._ampm.visible = this._hourFormat === '12';
         // AM/PM stays last.
         this._row.set_child_above_sibling(this._ampm, null);
+        this._applyGeometry();
     }
 
     _startTick() {
@@ -294,11 +419,22 @@ class SevenSegmentClock extends St.Button {
     }
 
     _applyColonState() {
+        const hex = this._ledColor;
         for (const colon of this._colons) {
             if (this._colonLit)
                 colon.remove_style_class_name('colon-off');
             else
                 colon.add_style_class_name('colon-off');
+
+            for (const child of colon.get_children()) {
+                if ((child.style_class || '').includes('seven-seg-colon-spacer'))
+                    continue;
+
+                if (this._colonLit)
+                    child.set_style(litDotStyle(hex));
+                else
+                    child.set_style('background-color: transparent; box-shadow: none;');
+            }
         }
     }
 
@@ -307,6 +443,7 @@ class SevenSegmentClock extends St.Button {
         let hours = now.getHours();
         const minutes = now.getMinutes();
         const seconds = now.getSeconds();
+        const hex = this._ledColor;
 
         if (this._hourFormat === '12') {
             const isPm = hours >= 12;
@@ -314,6 +451,7 @@ class SevenSegmentClock extends St.Button {
             if (hours === 0)
                 hours = 12;
             this._ampm.text = isPm ? 'PM' : 'AM';
+            this._ampm.set_style(`color: ${hex};`);
         }
 
         const parts = [
@@ -325,10 +463,12 @@ class SevenSegmentClock extends St.Button {
         }
 
         for (let i = 0; i < this._digits.length; i++)
-            setDigitValue(this._digits[i], parts[i] ?? 0);
+            setDigitValue(this._digits[i], parts[i] ?? 0, hex);
 
         if (!this._colonBlink) {
             this._colonLit = true;
+            this._applyColonState();
+        } else {
             this._applyColonState();
         }
     }

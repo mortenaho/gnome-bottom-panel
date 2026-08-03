@@ -71,6 +71,7 @@ export class PanelManager {
                 'clock-format',
                 'clock-colon-blink',
                 'clock-led-color',
+                'clock-segment-thickness',
                 'clock-hour-format',
                 'show-system-indicators',
                 'multi-monitor',

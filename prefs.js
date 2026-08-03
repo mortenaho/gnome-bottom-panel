@@ -222,6 +222,7 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
             clockFormat.sensitive = seven;
             clockHour.sensitive = seven;
             clockLed.sensitive = seven;
+            clockThickness.sensitive = seven;
             clockBlink.sensitive = seven;
         };
         clockStyle.connect('notify::selected', () => {
@@ -271,25 +272,61 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
         settings.connect('changed::clock-hour-format', applyHour);
         clockGroup.add(clockHour);
 
-        const clockLed = new Adw.ComboRow({
+        const clockLed = new Adw.ActionRow({
             title: _('LED color'),
-            model: new Gtk.StringList({
-                strings: [_('Red'), _('Green'), _('Blue'), _('Amber')],
+            subtitle: _('Any color, including white'),
+        });
+        const colorBtn = new Gtk.ColorDialogButton({
+            valign: Gtk.Align.CENTER,
+            dialog: new Gtk.ColorDialog({
+                title: _('LED color'),
+                with_alpha: false,
             }),
         });
-        const ledMap = ['red', 'green', 'blue', 'amber'];
-        const applyLed = () => {
-            const value = settings.get_string('clock-led-color');
-            const idx = ledMap.indexOf(value);
-            clockLed.selected = idx >= 0 ? idx : 0;
+
+        const parseLed = value => {
+            const presets = {
+                red: '#ff3b30',
+                green: '#34c759',
+                blue: '#0a84ff',
+                amber: '#ff9f0a',
+                white: '#ffffff',
+            };
+            let hex = String(value || '').trim().toLowerCase();
+            if (presets[hex])
+                hex = presets[hex];
+            if (!/^#[0-9a-f]{6}$/.test(hex))
+                hex = '#ff3b30';
+            const rgba = new Gdk.RGBA();
+            rgba.parse(hex);
+            return rgba;
         };
-        applyLed();
-        clockLed.connect('notify::selected', () => {
-            settings.set_string('clock-led-color',
-                ledMap[clockLed.selected] ?? 'red');
+        const rgbaToHex = rgba => {
+            const ch = v => Math.round(v * 255).toString(16).padStart(2, '0');
+            return `#${ch(rgba.red)}${ch(rgba.green)}${ch(rgba.blue)}`;
+        };
+
+        colorBtn.rgba = parseLed(settings.get_string('clock-led-color'));
+        let ledSync = false;
+        colorBtn.connect('notify::rgba', () => {
+            if (ledSync)
+                return;
+            settings.set_string('clock-led-color', rgbaToHex(colorBtn.rgba));
         });
-        settings.connect('changed::clock-led-color', applyLed);
+        settings.connect('changed::clock-led-color', () => {
+            ledSync = true;
+            colorBtn.rgba = parseLed(settings.get_string('clock-led-color'));
+            ledSync = false;
+        });
+        clockLed.add_suffix(colorBtn);
+        clockLed.activatable_widget = colorBtn;
         clockGroup.add(clockLed);
+
+        const clockThickness = this._spinRow(settings, 'clock-segment-thickness',
+            _('Segment thickness'),
+            _('Width of the lit seven-segment bars'),
+            1, 8, 1);
+        clockGroup.add(clockThickness);
 
         const clockBlink = this._switchRow(settings, 'clock-colon-blink',
             _('Blinking colon'),

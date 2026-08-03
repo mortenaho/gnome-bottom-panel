@@ -18,9 +18,9 @@
     </key>
 
     <key name="tray-icon-size" type="i">
-      <default>16</default>
+      <default>22</default>
       <summary>Tray icon size</summary>
-      <description>Size of system tray / right-side icons (Quick Settings, keyboard flag, etc.), in logical pixels.</description>
+      <description>Size of system tray / right-side icons (Quick Settings, keyboard flag, etc.), in logical pixels. The keyboard flag height matches this value.</description>
       <range min="12" max="48"/>
     </key>
 
@@ -152,15 +152,16 @@
     </key>
 
     <key name="clock-led-color" type="s">
-      <default>"red"</default>
+      <default>"#ff3b30"</default>
       <summary>Clock LED color</summary>
-      <description>LED color for the seven-segment clock: "red", "green", "blue", or "amber".</description>
-      <choices>
-        <choice value="red"/>
-        <choice value="green"/>
-        <choice value="blue"/>
-        <choice value="amber"/>
-      </choices>
+      <description>LED color for the seven-segment clock as a hex RGB string (e.g. #ff3b30). Named presets red/green/blue/amber/white are also accepted.</description>
+    </key>
+
+    <key name="clock-segment-thickness" type="i">
+      <default>2</default>
+      <summary>Seven-segment thickness</summary>
+      <description>Thickness of lit bars on the seven-segment clock, in pixels.</description>
+      <range min="1" max="8"/>
     </key>
 
     <key name="clock-hour-format" type="s">

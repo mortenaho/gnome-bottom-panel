@@ -10,6 +10,29 @@ import Gio from 'gi://Gio';
 /** @type {Gio.Settings|null} */
 let _settings = null;
 
+const LED_PRESETS = {
+    red: '#ff3b30',
+    green: '#34c759',
+    blue: '#0a84ff',
+    amber: '#ff9f0a',
+    white: '#ffffff',
+};
+
+/**
+ * @param {string} value
+ * @returns {string} `#rrggbb`
+ */
+function normalizeClockLedColor(value) {
+    const raw = String(value || '').trim().toLowerCase();
+    if (LED_PRESETS[raw])
+        return LED_PRESETS[raw];
+    if (/^#[0-9a-f]{6}$/.test(raw))
+        return raw;
+    if (/^#[0-9a-f]{3}$/.test(raw))
+        return `#${raw[1]}${raw[1]}${raw[2]}${raw[2]}${raw[3]}${raw[3]}`;
+    return LED_PRESETS.red;
+}
+
 /**
  * Initialize the module-level settings handle.
  *
@@ -82,7 +105,8 @@ export function getPanelOptions() {
         clockStyle: s.get_string('clock-style'),
         clockFormat: s.get_string('clock-format'),
         clockColonBlink: s.get_boolean('clock-colon-blink'),
-        clockLedColor: s.get_string('clock-led-color'),
+        clockLedColor: normalizeClockLedColor(s.get_string('clock-led-color')),
+        clockSegmentThickness: s.get_int('clock-segment-thickness'),
         clockHourFormat: s.get_string('clock-hour-format'),
         showSystemIndicators: s.get_boolean('show-system-indicators'),
         multiMonitor: s.get_boolean('multi-monitor'),

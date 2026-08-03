@@ -177,7 +177,7 @@
 }
 
 .seven-seg-seg {
-    background-color: rgba(128, 128, 128, 0.18);
+    background-color: transparent;
     border-radius: 1px;
 }
 
@@ -206,7 +206,7 @@
     width: 3px;
     height: 3px;
     border-radius: 2px;
-    background-color: rgba(128, 128, 128, 0.18);
+    background-color: transparent;
 }
 
 .seven-seg-colon-spacer {
@@ -215,6 +215,7 @@
 
 .seven-seg-colon.colon-off .seven-seg-colon-dot {
     background-color: transparent;
+    box-shadow: none;
 }
 
 .seven-seg-ampm {
@@ -224,72 +225,7 @@
     padding-bottom: 1px;
 }
 
-/* LED on colors */
-.bottom-panel-seven-seg.led-red .seven-seg-seg.on {
-    background-color: #ff3b30;
-    box-shadow: 0 0 4px rgba(255, 59, 48, 0.55);
-}
-
-.bottom-panel-seven-seg.led-red .seven-seg-colon .seven-seg-colon-dot {
-    background-color: #ff3b30;
-    box-shadow: 0 0 3px rgba(255, 59, 48, 0.45);
-}
-
-.bottom-panel-seven-seg.led-red .seven-seg-ampm {
-    color: #ff3b30;
-}
-
-.bottom-panel-seven-seg.led-green .seven-seg-seg.on {
-    background-color: #34c759;
-    box-shadow: 0 0 4px rgba(52, 199, 89, 0.55);
-}
-
-.bottom-panel-seven-seg.led-green .seven-seg-colon .seven-seg-colon-dot {
-    background-color: #34c759;
-    box-shadow: 0 0 3px rgba(52, 199, 89, 0.45);
-}
-
-.bottom-panel-seven-seg.led-green .seven-seg-ampm {
-    color: #34c759;
-}
-
-.bottom-panel-seven-seg.led-blue .seven-seg-seg.on {
-    background-color: #0a84ff;
-    box-shadow: 0 0 4px rgba(10, 132, 255, 0.55);
-}
-
-.bottom-panel-seven-seg.led-blue .seven-seg-colon .seven-seg-colon-dot {
-    background-color: #0a84ff;
-    box-shadow: 0 0 3px rgba(10, 132, 255, 0.45);
-}
-
-.bottom-panel-seven-seg.led-blue .seven-seg-ampm {
-    color: #0a84ff;
-}
-
-.bottom-panel-seven-seg.led-amber .seven-seg-seg.on {
-    background-color: #ff9f0a;
-    box-shadow: 0 0 4px rgba(255, 159, 10, 0.55);
-}
-
-.bottom-panel-seven-seg.led-amber .seven-seg-colon .seven-seg-colon-dot {
-    background-color: #ff9f0a;
-    box-shadow: 0 0 3px rgba(255, 159, 10, 0.45);
-}
-
-.bottom-panel-seven-seg.led-amber .seven-seg-ampm {
-    color: #ff9f0a;
-}
-
-.bottom-panel-seven-seg.led-red .seven-seg-colon.colon-off .seven-seg-colon-dot,
-.bottom-panel-seven-seg.led-green .seven-seg-colon.colon-off .seven-seg-colon-dot,
-.bottom-panel-seven-seg.led-blue .seven-seg-colon.colon-off .seven-seg-colon-dot,
-.bottom-panel-seven-seg.led-amber .seven-seg-colon.colon-off .seven-seg-colon-dot {
-    background-color: transparent;
-    box-shadow: none;
-}
-
-/* —— Keyboard layout (flat rectangular SVG flags, 3:2) —— */
+/* —— Keyboard layout (flat rectangular PNG flags) —— */
 
 .bottom-panel-keyboard {
     -natural-hpadding: 6px;
@@ -306,17 +242,13 @@
     padding: 2px 0;
 }
 
-/* Strict rectangle — size set at runtime from tray-icon-size */
+/* No border — size filled by background-image at runtime */
 .bottom-panel-kb-flag-rect {
+    border: none;
     border-radius: 0;
-    overflow: hidden;
-    border: 1px solid rgba(128, 128, 128, 0.45);
-    background-color: transparent;
-}
-
-.bottom-panel-kb-flag-icon {
     padding: 0;
     margin: 0;
+    background-color: transparent;
 }
 
 .bottom-panel-kb-char {
@@ -351,7 +283,7 @@
 }
 
 .bottom-panel .panel-status-indicators-box {
-    spacing: 2px;
+    spacing: 8px;
 }
 
 .bottom-panel #panelClock,

@@ -1,8 +1,8 @@
 /**
  * keyboardLayout.js — Keyboard layout indicator with character / flat flag / both.
  *
- * Flags are bundled flat PNG assets (flags/*.png) — e.g. official rectangular
- * US and Iran images. No emoji and no wavy / curved flag glyphs.
+ * Flags are flat PNG assets filled edge-to-edge via CSS background-image
+ * (avoids St.Icon square letterboxing). No emoji / no wave / no border.
  */
 
 import Clutter from 'gi://Clutter';
@@ -19,6 +19,9 @@ import {
     flagFilePath,
 } from '../utils/flags.js';
 
+/** Typical flag aspect (~US 1.9, IR 1.74). */
+const FLAG_ASPECT = 1.85;
+
 /**
  * @param {object} source
  * @returns {string}
@@ -28,15 +31,13 @@ function sourceShortLabel(source) {
 }
 
 /**
- * @param {string} extensionPath
- * @param {string} country
- * @returns {Gio.FileIcon|null}
+ * @param {string} path
+ * @returns {string} CSS url() with file URI
  */
-function flagGIcon(extensionPath, country) {
-    const path = flagFilePath(extensionPath, country);
-    if (!path)
-        return null;
-    return new Gio.FileIcon({file: Gio.File.new_for_path(path)});
+function cssFlagBackground(path) {
+    const uri = Gio.File.new_for_path(path).get_uri();
+    // Fill the rectangle completely — no letterboxing, no border.
+    return `background-image: url("${uri}"); background-size: 100% 100%; background-repeat: no-repeat; background-position: center;`;
 }
 
 export const KeyboardLayoutIndicator = GObject.registerClass(
@@ -50,7 +51,9 @@ class KeyboardLayoutIndicator extends PanelMenu.Button {
 
         this._displayMode = displayMode;
         this._extensionPath = extensionPath;
-        this._iconSize = 16;
+        // Height matches tray icons; width follows flag aspect.
+        this._iconSize = 22;
+        this._flagPath = null;
         this.add_style_class_name('bottom-panel-keyboard');
 
         this._box = new St.BoxLayout({
@@ -60,18 +63,12 @@ class KeyboardLayoutIndicator extends PanelMenu.Button {
         });
         this.add_child(this._box);
 
-        // Strict 3:2 rectangle that clips the flag icon (no rounded wave look).
-        this._flagBin = new St.Bin({
+        this._flagBin = new St.Widget({
             style_class: 'bottom-panel-kb-flag-rect',
             y_align: Clutter.ActorAlign.CENTER,
             x_align: Clutter.ActorAlign.CENTER,
+            reactive: false,
         });
-        this._flagIcon = new St.Icon({
-            style_class: 'bottom-panel-kb-flag-icon',
-            y_align: Clutter.ActorAlign.CENTER,
-            x_align: Clutter.ActorAlign.CENTER,
-        });
-        this._flagBin.set_child(this._flagIcon);
         this._applyFlagGeometry();
 
         this._charLabel = new St.Label({
@@ -112,31 +109,37 @@ class KeyboardLayoutIndicator extends PanelMenu.Button {
     }
 
     /**
-     * Scale the flag badge (and menu flags) to match tray icon size.
+     * Match other tray icons: `size` is the icon height in logical pixels.
      *
-     * @param {number} size — logical width in px (height follows 3:2)
+     * @param {number} size
      */
     setIconSize(size) {
-        const next = Math.max(12, Math.min(48, size | 0));
+        const next = Math.max(14, Math.min(48, size | 0));
         if (next === this._iconSize)
             return;
         this._iconSize = next;
         this._applyFlagGeometry();
+        this._applyFlagImage();
         this._rebuildMenu();
     }
 
     _flagMetrics() {
-        // Match provided assets (~1.9:1 US, ~1.74:1 IR) — use ~1.85:1 rectangle.
-        const w = this._iconSize;
-        const h = Math.max(8, Math.round(w / 1.85));
+        const h = this._iconSize;
+        const w = Math.max(h + 4, Math.round(h * FLAG_ASPECT));
         return {w, h};
     }
 
     _applyFlagGeometry() {
         const {w, h} = this._flagMetrics();
-        this._flagBin.set_width(w);
-        this._flagBin.set_height(h);
-        this._flagIcon.icon_size = w;
+        this._flagBin.set_size(w, h);
+    }
+
+    _applyFlagImage() {
+        if (!this._flagPath) {
+            this._flagBin.set_style('');
+            return;
+        }
+        this._flagBin.set_style(cssFlagBackground(this._flagPath));
     }
 
     _rebuildMenu() {
@@ -155,18 +158,16 @@ class KeyboardLayoutIndicator extends PanelMenu.Button {
             const item = new PopupMenu.PopupMenuItem('');
 
             const row = new St.BoxLayout({style_class: 'bottom-panel-kb-menu-row'});
-            const gicon = country ? flagGIcon(this._extensionPath, country) : null;
-            if (gicon) {
-                const iconBin = new St.Bin({
+            const path = country
+                ? flagFilePath(this._extensionPath, country)
+                : null;
+            if (path) {
+                const iconBin = new St.Widget({
                     style_class: 'bottom-panel-kb-flag-rect',
                     width: w,
                     height: h,
+                    style: cssFlagBackground(path),
                 });
-                iconBin.set_child(new St.Icon({
-                    gicon,
-                    icon_size: w,
-                    style_class: 'bottom-panel-kb-flag-icon',
-                }));
                 row.add_child(iconBin);
             }
             row.add_child(new St.Label({
@@ -174,7 +175,6 @@ class KeyboardLayoutIndicator extends PanelMenu.Button {
                 y_align: Clutter.ActorAlign.CENTER,
             }));
 
-            // Replace default label content with our row.
             item.remove_child(item.label);
             item.add_child(row);
             item.connect('activate', () => source.activate(true));
@@ -187,16 +187,16 @@ class KeyboardLayoutIndicator extends PanelMenu.Button {
         const mode = this._displayMode;
         const shortName = sourceShortLabel(source);
         const country = sourceToCountry(source);
-        const gicon = country ? flagGIcon(this._extensionPath, country) : null;
+        const path = country
+            ? flagFilePath(this._extensionPath, country)
+            : null;
 
-        const showFlag = (mode === 'flag' || mode === 'both') && !!gicon;
-        const showChar = mode === 'character' || mode === 'both' || !gicon;
+        const showFlag = (mode === 'flag' || mode === 'both') && !!path;
+        const showChar = mode === 'character' || mode === 'both' || !path;
 
+        this._flagPath = showFlag ? path : null;
         this._flagBin.visible = showFlag;
-        if (showFlag)
-            this._flagIcon.gicon = gicon;
-        else
-            this._flagIcon.gicon = null;
+        this._applyFlagImage();
 
         this._charLabel.visible = showChar;
         this._charLabel.text = shortName;
