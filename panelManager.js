@@ -61,6 +61,8 @@ export class PanelManager {
                 'show-favorites',
                 'show-running-apps',
                 'show-show-apps-button',
+                'taskbar-direction',
+                'taskbar-alignment',
                 'show-workspaces',
                 'show-clock',
                 'clock-position',
@@ -162,7 +164,10 @@ export class PanelManager {
     }
 
     _onSettingsChanged() {
-        const options = getPanelOptions();
+        const options = {
+            ...getPanelOptions(),
+            extensionPath: _extensionPath,
+        };
 
         if (options.hideOverviewDash)
             this._chrome.hideOverviewDash();
