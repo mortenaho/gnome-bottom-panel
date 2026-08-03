@@ -141,6 +141,7 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
             _('Running applications'), _('Open application icons')));
         contents.add(this._switchRow(settings, 'show-show-apps-button',
             _('Show Apps button'), _('Opens the application overview')));
+        contents.add(this._buildAppsIconRow(settings));
 
         const taskbarDir = new Adw.ComboRow({
             title: _('Taskbar direction'),
@@ -383,6 +384,162 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
             _('System indicators remain on the primary monitor only')));
 
         return page;
+    }
+
+    /**
+     * Apps / Start button icon: presets, theme name, or image path.
+     *
+     * @param {Gio.Settings} settings
+     * @returns {Adw.PreferencesGroup}
+     */
+    _buildAppsIconRow(settings) {
+        const DEFAULT = 'view-app-grid-symbolic';
+        const PRESETS = [
+            {id: 'view-app-grid-symbolic', label: _('App grid (default)')},
+            {id: 'view-grid-symbolic', label: _('Grid')},
+            {id: 'start-here-symbolic', label: _('Start here')},
+            {id: 'applications-system-symbolic', label: _('Applications')},
+            {id: 'open-menu-symbolic', label: _('Menu')},
+            {id: 'go-home-symbolic', label: _('Home')},
+            {id: 'custom', label: _('Custom…')},
+        ];
+
+        const group = new Adw.PreferencesGroup({
+            title: _('Apps button icon'),
+            description: _('Theme icon name or path to an image file'),
+        });
+
+        const combo = new Adw.ComboRow({
+            title: _('Icon'),
+            model: new Gtk.StringList({
+                strings: PRESETS.map(p => p.label),
+            }),
+        });
+
+        const customRow = new Adw.EntryRow({
+            title: _('Custom icon'),
+        });
+
+        const browse = new Gtk.Button({
+            icon_name: 'document-open-symbolic',
+            tooltip_text: _('Choose image file'),
+            valign: Gtk.Align.CENTER,
+        });
+        browse.add_css_class('flat');
+        customRow.add_suffix(browse);
+
+        const preview = new Gtk.Image({
+            icon_name: DEFAULT,
+            pixel_size: 24,
+            valign: Gtk.Align.CENTER,
+        });
+        combo.add_prefix(preview);
+
+        const isFilePath = value =>
+            value.startsWith('/') || value.startsWith('file://');
+
+        const presetIndex = value => {
+            const idx = PRESETS.findIndex(p => p.id === value);
+            return idx >= 0 ? idx : PRESETS.length - 1;
+        };
+
+        const updatePreview = value => {
+            const icon = value.trim() || DEFAULT;
+            if (isFilePath(icon)) {
+                try {
+                    const file = icon.startsWith('file://')
+                        ? Gio.File.new_for_uri(icon)
+                        : Gio.File.new_for_path(icon);
+                    preview.set_from_gicon(Gio.FileIcon.new(file));
+                } catch (_e) {
+                    preview.icon_name = DEFAULT;
+                }
+            } else {
+                preview.icon_name = icon;
+            }
+        };
+
+        let syncing = false;
+
+        const applyFromSettings = () => {
+            syncing = true;
+            const value = settings.get_string('apps-button-icon') || DEFAULT;
+            combo.selected = presetIndex(value);
+            const custom = PRESETS[combo.selected]?.id === 'custom';
+            customRow.visible = custom;
+            if (custom)
+                customRow.text = value;
+            updatePreview(value);
+            syncing = false;
+        };
+
+        combo.connect('notify::selected', () => {
+            if (syncing)
+                return;
+            const preset = PRESETS[combo.selected];
+            if (!preset || preset.id === 'custom') {
+                customRow.visible = true;
+                const current = settings.get_string('apps-button-icon') || '';
+                if (!current || PRESETS.some(p => p.id === current && p.id !== 'custom'))
+                    customRow.text = DEFAULT;
+                return;
+            }
+            customRow.visible = false;
+            settings.set_string('apps-button-icon', preset.id);
+        });
+
+        customRow.connect('changed', () => {
+            if (syncing || !customRow.visible)
+                return;
+            const text = customRow.text.trim();
+            if (text)
+                settings.set_string('apps-button-icon', text);
+        });
+
+        browse.connect('clicked', () => {
+            const dialog = new Gtk.FileDialog({
+                title: _('Choose Apps button icon'),
+            });
+            const filter = new Gtk.FileFilter();
+            filter.set_name(_('Images'));
+            filter.add_mime_type('image/png');
+            filter.add_mime_type('image/svg+xml');
+            filter.add_mime_type('image/jpeg');
+            filter.add_mime_type('image/webp');
+            const filters = Gio.ListStore.new(Gtk.FileFilter.$gtype);
+            filters.append(filter);
+            dialog.filters = filters;
+            dialog.default_filter = filter;
+
+            dialog.open(browse.get_root(), null, (_d, res) => {
+                try {
+                    const file = dialog.open_finish(res);
+                    if (!file)
+                        return;
+                    const path = file.get_path();
+                    if (!path)
+                        return;
+                    syncing = true;
+                    combo.selected = PRESETS.length - 1;
+                    customRow.visible = true;
+                    customRow.text = path;
+                    syncing = false;
+                    settings.set_string('apps-button-icon', path);
+                } catch (_e) {
+                    // Cancelled
+                }
+            });
+        });
+
+        settings.connect('changed::apps-button-icon', applyFromSettings);
+        applyFromSettings();
+
+        settings.bind('show-show-apps-button', group, 'sensitive',
+            Gio.SettingsBindFlags.DEFAULT);
+
+        group.add(combo);
+        group.add(customRow);
+        return group;
     }
 
     /**

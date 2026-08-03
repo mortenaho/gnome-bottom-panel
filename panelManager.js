@@ -61,6 +61,7 @@ export class PanelManager {
                 'show-favorites',
                 'show-running-apps',
                 'show-show-apps-button',
+                'apps-button-icon',
                 'taskbar-direction',
                 'taskbar-alignment',
                 'show-workspaces',

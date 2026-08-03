@@ -14,10 +14,8 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 /** Role names managed by Main.panel._ensureIndicator / statusArea. */
 const SYSTEM_ROLES = [
     'quickSettings',
-    'a11y',
     // 'keyboard' — replaced by indicators/keyboardLayout.js
-    'dwellClick',
-    // screenRecording / screenSharing stay on the stock top panel (hidden)
+    // a11y / dwellClick / screenRecording / screenSharing stay on the stock top panel (hidden)
 ];
 
 /** Default right-side item order (prefs: panel-item-order). */
@@ -158,7 +156,7 @@ export class SystemTrayManager {
     }
 
     /**
-     * Move Quick Settings / a11y / dwellClick into `box`.
+     * Move Quick Settings into `box`.
      *
      * @param {St.BoxLayout} box
      */
@@ -189,7 +187,7 @@ export class SystemTrayManager {
     }
 
     /**
-     * Scale native tray icons (Quick Settings, a11y, …).
+     * Scale native tray icons (Quick Settings, …).
      *
      * @param {number} size
      */

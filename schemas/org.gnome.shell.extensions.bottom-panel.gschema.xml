@@ -103,6 +103,12 @@
       <description>Show the grid button that opens the application overview.</description>
     </key>
 
+    <key name="apps-button-icon" type="s">
+      <default>"view-app-grid-symbolic"</default>
+      <summary>Apps button icon</summary>
+      <description>Icon for the Apps / Start button. Use a theme icon name (default: view-app-grid-symbolic) or an absolute path to an image file.</description>
+    </key>
+
     <key name="taskbar-direction" type="s">
       <default>"ltr"</default>
       <summary>Taskbar direction</summary>

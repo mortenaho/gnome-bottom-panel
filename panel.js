@@ -157,7 +157,8 @@ class BottomPanel extends St.Widget {
         }
 
         if (opts.showShowAppsButton) {
-            this._startButton = new StartButton(opts.iconSize);
+            this._startButton = new StartButton(
+                opts.iconSize, opts.appsButtonIcon);
             this._centerCluster.add_child(this._startButton);
         }
 
@@ -459,6 +460,7 @@ class BottomPanel extends St.Widget {
         this._balanceSideColumns();
 
         this._startButton?.setIconSize?.(options.iconSize);
+        this._startButton?.setIconName?.(options.appsButtonIcon);
         this._keyboard?.setDisplayMode?.(options.keyboardDisplayMode);
         this._applyTrayIconSize(options.trayIconSize);
 
