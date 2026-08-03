@@ -16,7 +16,7 @@ Bottom dock/panel for **GNOME Shell 50**. Hides the default top bar and builds a
 - Configurable Apps (Start) button icon
 - Dark / light theme adaptation, optional custom panel color
 - Multi-monitor panels (system indicators on primary only)
-- Optional auto-hide (slide away when unused; reveal from the bottom edge)
+- Optional intellihide auto-hide (visible on desktop; hides only with maximized windows)
 - Preferences UI (Appearance / Layout / Behavior)
 
 ## Requirements

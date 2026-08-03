@@ -1,14 +1,18 @@
 /**
  * Auto-hide controller for a BottomPanel actor.
  *
- * Hides the panel after the pointer leaves (configurable delay). While
- * hidden the panel is unmapped so it cannot steal events; a hot edge plus
- * pointer proximity at the monitor bottom reveal it again. Overview and
- * modal dialogs keep the panel visible. Auto-hide disables window struts.
+ * Intellihide-style behavior when enabled:
+ * - Empty desktop / no maximized window → panel stays visible
+ * - Maximized or fullscreen window on this monitor → hide after the
+ *   pointer leaves; reveal from the bottom edge
+ *
+ * While hidden the panel is unmapped so it cannot steal events. Overview
+ * and modal dialogs keep the panel visible. Auto-hide disables window struts.
  */
 
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
+import Meta from 'gi://Meta';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
@@ -31,10 +35,16 @@ export class AutohideController {
         this._delay = 400;
         this._hideTimeout = 0;
         this._recheckTimeout = 0;
+        this._windowCheckId = 0;
         this._pollId = 0;
         this._hotEdge = null;
         this._signalIds = [];
         this._overviewIds = [];
+        /** @type {Map<object, number[]>} */
+        this._trackedWindows = new Map();
+        this._displayTracked = false;
+        this._wmTracked = false;
+        this._wsTracked = false;
     }
 
     /**
@@ -46,8 +56,8 @@ export class AutohideController {
             this._delay = Math.max(0, Math.min(5000, delayMs | 0));
 
         if (enabled === this._enabled) {
-            if (enabled && !this._hidden && !this._shouldStayVisible())
-                this._queueHide();
+            if (enabled)
+                this._syncToWindowState();
             return;
         }
 
@@ -85,23 +95,22 @@ export class AutohideController {
 
         this._overviewIds.push(
             Main.overview.connect('showing', () => this._showImmediate()),
-            Main.overview.connect('hiding', () => this._queueHide()));
+            Main.overview.connect('hiding', () => this._syncToWindowState()));
 
+        this._connectWindowWatch();
         this._ensureHotEdge();
         this._positionHotEdge();
         this._startPointerPoll();
-
-        if (this._shouldStayVisible())
-            this._showImmediate();
-        else
-            this._queueHide();
+        this._syncToWindowState();
     }
 
     _disable() {
         this._enabled = false;
         this._clearHideTimeout();
         this._clearRecheckTimeout();
+        this._clearWindowCheck();
         this._stopPointerPoll();
+        this._disconnectWindowWatch();
         this._disconnectSignals();
         this._destroyHotEdge();
         this._showImmediate();
@@ -118,6 +127,175 @@ export class AutohideController {
         this._overviewIds = [];
     }
 
+    _connectWindowWatch() {
+        if (this._displayTracked)
+            return;
+
+        const schedule = () => this._scheduleWindowCheck();
+
+        global.display.connectObject(
+            'window-created', (_d, win) => {
+                this._trackWindow(win);
+                schedule();
+            },
+            this);
+        this._displayTracked = true;
+
+        global.window_manager.connectObject(
+            'minimize', schedule,
+            'unminimize', schedule,
+            'size-changed', schedule,
+            'destroy', schedule,
+            this);
+        this._wmTracked = true;
+
+        global.workspace_manager.connectObject(
+            'active-workspace-changed', schedule,
+            this);
+        this._wsTracked = true;
+
+        for (const actor of global.get_window_actors()) {
+            const win = actor.meta_window;
+            if (win)
+                this._trackWindow(win);
+        }
+    }
+
+    _disconnectWindowWatch() {
+        if (this._displayTracked) {
+            global.display.disconnectObject(this);
+            this._displayTracked = false;
+        }
+        if (this._wmTracked) {
+            global.window_manager.disconnectObject(this);
+            this._wmTracked = false;
+        }
+        if (this._wsTracked) {
+            global.workspace_manager.disconnectObject(this);
+            this._wsTracked = false;
+        }
+
+        for (const win of [...this._trackedWindows.keys()])
+            this._untrackWindow(win);
+        this._trackedWindows.clear();
+    }
+
+    /**
+     * @param {Meta.Window} win
+     */
+    _trackWindow(win) {
+        if (!win || this._trackedWindows.has(win))
+            return;
+
+        const schedule = () => this._scheduleWindowCheck();
+        const ids = [
+            win.connect('notify::maximized-horizontally', schedule),
+            win.connect('notify::maximized-vertically', schedule),
+            win.connect('notify::fullscreen', schedule),
+            win.connect('notify::minimized', schedule),
+            win.connect('unmanaged', () => {
+                this._untrackWindow(win);
+                schedule();
+            }),
+        ];
+        this._trackedWindows.set(win, ids);
+    }
+
+    /**
+     * @param {Meta.Window} win
+     */
+    _untrackWindow(win) {
+        const ids = this._trackedWindows.get(win);
+        if (!ids)
+            return;
+        for (const id of ids) {
+            try {
+                win.disconnect(id);
+            } catch (_e) {
+                // window may already be gone
+            }
+        }
+        this._trackedWindows.delete(win);
+    }
+
+    _scheduleWindowCheck() {
+        if (!this._enabled || this._windowCheckId)
+            return;
+
+        this._windowCheckId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._windowCheckId = 0;
+            if (this._enabled)
+                this._syncToWindowState();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _clearWindowCheck() {
+        if (this._windowCheckId) {
+            GLib.Source.remove(this._windowCheckId);
+            this._windowCheckId = 0;
+        }
+    }
+
+    /**
+     * Keep the panel out when a maximized/fullscreen window is present;
+     * otherwise force it visible (desktop / normal windows).
+     */
+    _syncToWindowState() {
+        if (!this._enabled)
+            return;
+
+        if (this._isBlockedByShell() || !this._hasObscuringWindow()) {
+            this._showImmediate();
+            return;
+        }
+
+        if (this._shouldStayVisible())
+            return;
+
+        this._queueHide();
+    }
+
+    /**
+     * True when a maximized or fullscreen window covers this monitor's
+     * current workspace — the only case where auto-hide may tuck the panel.
+     *
+     * @returns {boolean}
+     */
+    _hasObscuringWindow() {
+        const monitorIndex = this._panel.monitorIndex;
+        const workspace = global.workspace_manager.get_active_workspace();
+
+        for (const actor of global.get_window_actors()) {
+            const win = actor.meta_window;
+            if (!win || win.minimized)
+                continue;
+            if (!win.showing_on_its_workspace())
+                continue;
+            if (win.get_monitor() !== monitorIndex)
+                continue;
+            if (!win.located_on_workspace(workspace))
+                continue;
+
+            const type = win.get_window_type();
+            if (type !== Meta.WindowType.NORMAL &&
+                type !== Meta.WindowType.DIALOG &&
+                type !== Meta.WindowType.MODAL_DIALOG)
+                continue;
+
+            if (typeof win.is_fullscreen === 'function'
+                ? win.is_fullscreen()
+                : win.fullscreen)
+                return true;
+
+            // Bottom panel is covered once the window is vertically maximized.
+            if (win.maximized_vertically)
+                return true;
+        }
+
+        return false;
+    }
+
     _onPanelEnter() {
         this._clearHideTimeout();
         this._show();
@@ -130,6 +308,12 @@ export class AutohideController {
     _queueHide() {
         if (!this._enabled)
             return;
+
+        // Never tuck away on an empty desktop / non-maximized layout.
+        if (!this._hasObscuringWindow()) {
+            this._showImmediate();
+            return;
+        }
 
         this._clearHideTimeout();
 
@@ -219,6 +403,9 @@ export class AutohideController {
             return true;
         if (this._isBlockedByShell())
             return true;
+        // Desktop / floating windows: always keep the panel out.
+        if (!this._hasObscuringWindow())
+            return true;
         if (this._panel.visible && this._panel.hover)
             return true;
         if (this._hotEdge?.visible && this._hotEdge.hover)
@@ -305,6 +492,12 @@ export class AutohideController {
     _hide() {
         if (this._hidden)
             return;
+
+        // Safety: never hide without an obscuring maximized window.
+        if (!this._hasObscuringWindow()) {
+            this._showImmediate();
+            return;
+        }
 
         this._hidden = true;
         const offset = Math.max(this._panel.height || 40, 40) + 4;
@@ -404,7 +597,9 @@ export class AutohideController {
 
     /** Reposition hot edge after monitor geometry changes. */
     onMonitorChanged() {
-        if (this._enabled)
+        if (this._enabled) {
             this._positionHotEdge();
+            this._syncToWindowState();
+        }
     }
 }

@@ -679,13 +679,13 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
 
         const hideGroup = new Adw.PreferencesGroup({
             title: _('Auto-hide'),
-            description: _('Slide the panel away when unused; move the pointer to the bottom edge to show it'),
+            description: _('Stay visible on the desktop; tuck away only when a window is maximized'),
         });
         page.add(hideGroup);
 
         hideGroup.add(this._switchRow(settings, 'autohide',
             _('Auto-hide panel'),
-            _('Hide the panel when the pointer leaves; maximized windows use the full height')));
+            _('Show on empty desktop / normal windows; hide when maximized, reveal from the bottom edge')));
         hideGroup.add(this._spinRow(settings, 'autohide-delay',
             _('Hide delay'),
             _('Milliseconds to wait before hiding after the pointer leaves'),

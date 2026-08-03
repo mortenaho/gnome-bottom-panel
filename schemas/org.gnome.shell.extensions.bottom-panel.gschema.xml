@@ -245,7 +245,7 @@
     <key name="autohide" type="b">
       <default>false</default>
       <summary>Auto-hide panel</summary>
-      <description>Hide the panel when the pointer leaves it. Move the pointer to the bottom edge of the screen to show it again. Maximized windows use the full screen height while auto-hide is enabled.</description>
+      <description>Intellihide: keep the panel visible on the desktop and when no window is maximized. When a maximized or fullscreen window is present, hide the panel after the pointer leaves and reveal it from the bottom edge. Maximized windows use the full screen height while auto-hide is enabled.</description>
     </key>
 
     <key name="autohide-delay" type="i">
