@@ -8,7 +8,11 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {BottomPanel} from './panel.js';
 import {ChromeController} from './utils/chrome.js';
-import {getPanelOptions, onSettingsChanged} from './utils/settings.js';
+import {
+    getPanelOptions,
+    getPanelOptionsForMonitor,
+    onSettingsChanged,
+} from './utils/settings.js';
 
 /** @type {string} */
 let _extensionPath = '';
@@ -50,6 +54,10 @@ export class PanelManager {
                 'panel-height',
                 'icon-size',
                 'tray-icon-size',
+                'panel-height-large',
+                'icon-size-large',
+                'tray-icon-size-large',
+                'large-monitor-min-width',
                 'panel-item-order',
                 'panel-spacing',
                 'panel-margin',
@@ -74,6 +82,8 @@ export class PanelManager {
                 'clock-segment-thickness',
                 'clock-hour-format',
                 'show-system-indicators',
+                'show-app-tray',
+                'tray-max-visible',
                 'multi-monitor',
                 'isolate-monitors',
                 'isolate-workspaces',
@@ -114,14 +124,11 @@ export class PanelManager {
     }
 
     _createPanels() {
-        const options = {
-            ...getPanelOptions(),
-            extensionPath: _extensionPath,
-        };
         const monitors = Main.layoutManager.monitors;
         const primaryIndex = Main.layoutManager.primaryIndex;
+        const multiMonitor = getPanelOptions().multiMonitor;
 
-        const indices = options.multiMonitor
+        const indices = multiMonitor
             ? monitors.map((_, i) => i)
             : [primaryIndex];
 
@@ -129,6 +136,10 @@ export class PanelManager {
             if (this._panels.has(index))
                 continue;
 
+            const options = {
+                ...getPanelOptionsForMonitor(index),
+                extensionPath: _extensionPath,
+            };
             const panel = new BottomPanel({
                 monitorIndex: index,
                 isPrimary: index === primaryIndex,
@@ -167,17 +178,14 @@ export class PanelManager {
     }
 
     _onSettingsChanged() {
-        const options = {
-            ...getPanelOptions(),
-            extensionPath: _extensionPath,
-        };
+        const shared = getPanelOptions();
 
-        if (options.hideOverviewDash)
+        if (shared.hideOverviewDash)
             this._chrome.hideOverviewDash();
         else
             this._chrome.restoreOverviewDash();
 
-        const desiredCount = options.multiMonitor
+        const desiredCount = shared.multiMonitor
             ? Main.layoutManager.monitors.length
             : 1;
 
@@ -187,7 +195,11 @@ export class PanelManager {
         }
 
         let needsRebuild = false;
-        for (const panel of this._panels.values()) {
+        for (const [index, panel] of this._panels) {
+            const options = {
+                ...getPanelOptionsForMonitor(index),
+                extensionPath: _extensionPath,
+            };
             if (panel.updateOptions(options))
                 needsRebuild = true;
         }

@@ -206,7 +206,17 @@ export function applyBlurEffect(actor, enabled) {
 }
 
 /**
+ * Vertical CSS padding on `.bottom-panel-app-icon` (top + bottom).
+ * Icons must leave at least this much room inside the panel height.
+ */
+export const TASKBAR_ICON_PAD = 8;
+
+/**
  * Scale a logical pixel value by the monitor's scale factor.
+ *
+ * Prefer logical pixels for Clutter/St layout when Mutter uses
+ * `scale-monitor-framebuffer` (stage coords are already logical).
+ * Use this only for APIs that still expect device pixels.
  *
  * @param {number} logicalPx
  * @param {number} monitorIndex
@@ -215,6 +225,32 @@ export function applyBlurEffect(actor, enabled) {
 export function scaleForMonitor(logicalPx, monitorIndex) {
     const scale = global.display.get_monitor_scale(monitorIndex);
     return Math.round(logicalPx * scale);
+}
+
+/**
+ * Keep taskbar icons square inside the panel: never taller than the dock.
+ *
+ * @param {number} iconSize
+ * @param {number} panelHeight
+ * @returns {number}
+ */
+export function fitIconSize(iconSize, panelHeight) {
+    const size = Math.max(16, Math.round(Number(iconSize) || 32));
+    const height = Math.max(32, Math.round(Number(panelHeight) || 48));
+    return Math.min(size, Math.max(16, height - TASKBAR_ICON_PAD));
+}
+
+/**
+ * Panel height that can host `iconSize` without squashing icons.
+ *
+ * @param {number} panelHeight
+ * @param {number} iconSize
+ * @returns {number}
+ */
+export function fitPanelHeight(panelHeight, iconSize) {
+    const height = Math.max(32, Math.round(Number(panelHeight) || 48));
+    const size = Math.max(16, Math.round(Number(iconSize) || 32));
+    return Math.max(height, size + TASKBAR_ICON_PAD);
 }
 
 /**

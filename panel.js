@@ -4,7 +4,9 @@
  */
 
 import Clutter from 'gi://Clutter';
+import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
+import Mtk from 'gi://Mtk';
 import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -17,6 +19,7 @@ import {
 } from './indicators/systemTray.js';
 import {SevenSegmentClock} from './indicators/sevenSegmentClock.js';
 import {KeyboardLayoutIndicator} from './indicators/keyboardLayout.js';
+import {AppIndicatorTray} from './indicators/appTray.js';
 import {Taskbar} from './widgets/taskbar.js';
 import {StartButton} from './widgets/startButton.js';
 import {AutohideController} from './utils/autohide.js';
@@ -24,7 +27,7 @@ import {
     applyThemeClasses,
     applyBlurEffect,
     buildPanelInlineStyle,
-    scaleForMonitor,
+    fitIconSize,
     watchColorScheme,
 } from './utils/theming.js';
 
@@ -55,7 +58,9 @@ class BottomPanel extends St.Widget {
         this._disposeColorWatch = null;
         this._chromeTracked = false;
         this._affectsStruts = true;
+        this._trackFullscreen = true;
         this._autohide = null;
+        this._minimizeTargetIdle = 0;
 
         // Panel chrome is always LTR so left/center/right stay in fixed
         // screen positions even when the session language is RTL.
@@ -119,8 +124,10 @@ class BottomPanel extends St.Widget {
         this._shell.add_child(this._rightBox);
 
         this._balancingSides = false;
-        this._shell.connect('notify::allocation',
-            () => this._balanceSideColumns());
+        this._shell.connect('notify::allocation', () => {
+            this._balanceSideColumns();
+            this._queueMinimizeTargetUpdate();
+        });
         this._centerCluster.connect('notify::allocation',
             () => this._balanceSideColumns());
         this._rightBox.connect('notify::allocation',
@@ -133,6 +140,7 @@ class BottomPanel extends St.Widget {
         this._positionOnMonitor();
         this._balanceSideColumns();
         this._trackChrome();
+        this._queueMinimizeTargetUpdate();
 
         if (this._options.scrollPanelWorkspaces) {
             this.connect('scroll-event', (_a, event) =>
@@ -142,7 +150,11 @@ class BottomPanel extends St.Widget {
         this._disposeColorWatch = watchColorScheme(() => this._applyVisuals());
 
         global.display.connectObject(
-            'workareas-changed', () => this._positionOnMonitor(),
+            'workareas-changed', () => {
+                this._positionOnMonitor();
+                this._queueMinimizeTargetUpdate();
+            },
+            'window-created', () => this._queueMinimizeTargetUpdate(),
             this);
 
         this._autohide = new AutohideController(this);
@@ -245,10 +257,24 @@ class BottomPanel extends St.Widget {
                 this._systemTray?.placeSystemIndicators(this._rightContent);
             } else if (id === 'keyboard') {
                 this._placeKeyboardItem();
+            } else if (id === 'tray') {
+                this._placeAppTrayItem();
             }
         }
 
         this._applyTrayIconSize(opts.trayIconSize);
+    }
+
+    _placeAppTrayItem() {
+        const opts = this._options;
+        if (!opts.showAppTray)
+            return;
+
+        this._appTray = new AppIndicatorTray({
+            iconSize: opts.trayIconSize,
+            maxVisible: opts.trayMaxVisible ?? 0,
+        });
+        this._rightContent.add_child(this._appTray);
     }
 
     /**
@@ -284,22 +310,21 @@ class BottomPanel extends St.Widget {
             this._leftBox.x_expand = true;
             this._rightBox.x_expand = false;
         } else {
-            // Fixed equal side columns → true screen center, no overlap.
+            // Fixed side columns → true screen center, no overlap.
             this._leftBox.x_expand = false;
             this._rightBox.x_expand = false;
-            this._balanceSideColumns();
         }
+        this._balanceSideColumns();
         this._shell.queue_relayout();
     }
 
     /**
-     * Keep left/right columns the same width so the taskbar sits at the
-     * real horizontal center of the monitor, while tray stays on the right.
+     * Keep the taskbar near screen center without clipping the right tray.
+     * Sides are reserved first so a long taskbar never eats the clock/tray;
+     * excess apps scroll inside the taskbar instead of being clipped.
      */
     _balanceSideColumns() {
         if (this._balancingSides || !this._shell)
-            return;
-        if ((this._options.taskbarAlignment ?? 'center') === 'right')
             return;
 
         const shellW = this._shell.width;
@@ -310,23 +335,63 @@ class BottomPanel extends St.Widget {
         try {
             this._leftBox.set_width(-1);
             this._rightBox.set_width(-1);
+            this._centerBox.set_width(-1);
 
-            const centerW = Math.ceil(
-                this._centerBox.get_preferred_width(-1)[1]);
+            const themeNode = this._shell.get_theme_node?.();
+            const padL = themeNode?.get_padding?.(St.Side.LEFT) ?? 0;
+            const padR = themeNode?.get_padding?.(St.Side.RIGHT) ?? 0;
+            // Stage / St layout use logical pixels (scale-monitor-framebuffer).
+            const spacing = this._options.panelSpacing ?? 0;
+            const horizontalPad = Math.max(padL + padR, spacing * 2);
+            const usable = Math.max(0, shellW - horizontalPad);
+
             const leftNat = Math.ceil(
                 this._leftBox.get_preferred_width(-1)[1]);
             const rightNat = Math.ceil(
                 this._rightContent.get_preferred_width(-1)[1]);
+            const centerNat = Math.ceil(
+                this._centerBox.get_preferred_width(-1)[1]);
 
-            const sideW = Math.max(
-                leftNat,
-                rightNat,
-                Math.floor((shellW - centerW) / 2));
+            // Reserve tray / workspaces first; taskbar may scroll in the rest.
+            const centerMax = Math.max(0, usable - leftNat - rightNat);
+            const centerW = Math.min(centerNat, centerMax);
 
-            if (sideW > 0) {
-                this._leftBox.set_width(sideW);
-                this._rightBox.set_width(sideW);
+            if ((this._options.taskbarAlignment ?? 'center') === 'right') {
+                this._centerBox.set_width(centerW);
+                this._rightBox.set_width(rightNat);
+                this._leftBox.set_width(-1);
+                return;
             }
+
+            const remaining = Math.max(0, usable - centerW);
+            let leftW;
+            let rightW;
+
+            // Prefer true centering when the tray fits in the right half.
+            const idealSide = Math.floor(remaining / 2);
+            if (rightNat <= idealSide && leftNat <= idealSide) {
+                leftW = Math.max(leftNat, idealSide);
+                rightW = remaining - leftW;
+                if (rightW < rightNat) {
+                    rightW = rightNat;
+                    leftW = Math.max(leftNat, remaining - rightW);
+                }
+            } else {
+                // Collision: keep the right tray fully visible.
+                rightW = Math.min(rightNat, remaining);
+                leftW = Math.max(0, remaining - rightW);
+                if (leftW < leftNat && remaining >= leftNat) {
+                    leftW = leftNat;
+                    rightW = Math.max(0, remaining - leftW);
+                }
+            }
+
+            this._leftBox.set_width(Math.max(0, leftW));
+            this._rightBox.set_width(Math.max(0, rightW));
+            // Cap center when apps overflow so DashIconsLayout cannot
+            // shrink-to-zero and clip icons (scroll handles the rest).
+            if (centerNat > centerMax)
+                this._centerBox.set_width(centerMax);
         } finally {
             this._balancingSides = false;
         }
@@ -368,6 +433,7 @@ class BottomPanel extends St.Widget {
         this._rightContent.set_style(`icon-size: ${n}px;`);
         this._systemTray?.applyTrayIconSize(n);
         this._keyboard?.setIconSize?.(n);
+        this._appTray?.setIconSize?.(n);
     }
 
     /**
@@ -375,14 +441,18 @@ class BottomPanel extends St.Widget {
      */
     _createSevenSegmentClock() {
         const opts = this._options;
-        return new SevenSegmentClock({
+        const clock = new SevenSegmentClock({
             format: opts.clockFormat,
             colonBlink: opts.clockColonBlink,
             ledColor: opts.clockLedColor,
             hourFormat: opts.clockHourFormat,
             thickness: opts.clockSegmentThickness,
+            panelHeight: opts.panelHeight,
             extensionPath: opts.extensionPath ?? '',
         });
+        // DSEG width is locked in JS; rebalance when font/size settles.
+        clock.connect('metrics-changed', () => this._balanceSideColumns());
+        return clock;
     }
 
     _applyVisuals() {
@@ -401,10 +471,9 @@ class BottomPanel extends St.Widget {
         if (!monitor)
             return;
 
-        const margin = scaleForMonitor(
-            this._options.panelMargin, this.monitorIndex);
-        const height = scaleForMonitor(
-            this._options.panelHeight, this.monitorIndex);
+        // layoutManager geometry is logical pixels under modern Mutter.
+        const margin = Math.max(0, this._options.panelMargin ?? 0);
+        const height = Math.max(32, this._options.panelHeight ?? 48);
 
         // Win11-like: full-bleed when margin is 0, floating when > 0.
         const width = Math.max(0, monitor.width - 2 * margin);
@@ -415,6 +484,50 @@ class BottomPanel extends St.Widget {
         this.set_size(width, height);
         this._balanceSideColumns();
         this._autohide?.onMonitorChanged();
+        this._queueMinimizeTargetUpdate();
+    }
+
+    _queueMinimizeTargetUpdate() {
+        if (this._minimizeTargetIdle)
+            return;
+        this._minimizeTargetIdle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._minimizeTargetIdle = 0;
+            this._updateMinimizeTargets();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    /**
+     * Aim Shell minimize/unminimize animations at the bottom panel.
+     * App icons win when present; otherwise use the panel center.
+     */
+    _updateMinimizeTargets() {
+        if (!this.get_stage())
+            return;
+
+        const iconSize = fitIconSize(
+            this._options.iconSize ?? 32,
+            this._options.panelHeight ?? 48);
+        const [panelX, panelY] = this.get_transformed_position();
+        const [panelW, panelH] = this.get_transformed_size();
+        if (panelW < 1 || panelH < 1)
+            return;
+
+        const fallback = new Mtk.Rectangle();
+        fallback.x = Math.round(panelX + (panelW - iconSize) / 2);
+        fallback.y = Math.round(panelY + (panelH - iconSize) / 2);
+        fallback.width = iconSize;
+        fallback.height = iconSize;
+
+        const workspace = global.workspace_manager.get_active_workspace();
+        const windows = workspace.list_windows().filter(w =>
+            !w.is_skip_taskbar() && w.get_monitor() === this.monitorIndex);
+
+        for (const window of windows)
+            window.set_icon_geometry(fallback);
+
+        // Per-app icons override the panel-center fallback.
+        this._taskbar?.updateIconGeometries?.();
     }
 
     _trackChrome() {
@@ -423,22 +536,26 @@ class BottomPanel extends St.Widget {
 
         Main.layoutManager.addChrome(this, {
             affectsStruts: this._affectsStruts,
-            trackFullscreen: true,
+            trackFullscreen: this._trackFullscreen,
         });
         this._chromeTracked = true;
     }
 
     /**
      * Update whether maximized windows reserve space for the panel.
-     * Auto-hide disables struts so windows can use the full screen height.
+     * Auto-hide disables struts and fullscreen tracking so the Shell does
+     * not fight our own hide/show animations.
      *
      * @param {boolean} affectsStruts
      */
     _setAffectsStruts(affectsStruts) {
-        if (this._affectsStruts === affectsStruts)
+        const trackFullscreen = affectsStruts;
+        if (this._affectsStruts === affectsStruts &&
+            this._trackFullscreen === trackFullscreen)
             return;
 
         this._affectsStruts = affectsStruts;
+        this._trackFullscreen = trackFullscreen;
         if (!this._chromeTracked)
             return;
 
@@ -491,6 +608,7 @@ class BottomPanel extends St.Widget {
         this._startButton?.setIconName?.(options.appsButtonIcon);
         this._keyboard?.setDisplayMode?.(options.keyboardDisplayMode);
         this._applyTrayIconSize(options.trayIconSize);
+        this._appTray?.setMaxVisible?.(options.trayMaxVisible ?? 0);
 
         if (this._sevenSegClock) {
             this._sevenSegClock.setOptions({
@@ -499,8 +617,10 @@ class BottomPanel extends St.Widget {
                 ledColor: options.clockLedColor,
                 hourFormat: options.clockHourFormat,
                 thickness: options.clockSegmentThickness,
+                panelHeight: options.panelHeight,
                 extensionPath: options.extensionPath ?? '',
             });
+            this._balanceSideColumns();
         }
 
         if (this._startButton && !options.showShowAppsButton) {
@@ -525,6 +645,7 @@ class BottomPanel extends St.Widget {
             prev.clockPosition !== options.clockPosition ||
             prev.clockStyle !== options.clockStyle ||
             prev.showSystemIndicators !== options.showSystemIndicators ||
+            prev.showAppTray !== options.showAppTray ||
             prev.showShowAppsButton !== options.showShowAppsButton ||
             prev.showKeyboardLayout !== options.showKeyboardLayout ||
             prev.panelMargin !== options.panelMargin ||
@@ -532,12 +653,20 @@ class BottomPanel extends St.Widget {
     }
 
     _onDestroy() {
+        if (this._minimizeTargetIdle) {
+            GLib.Source.remove(this._minimizeTargetIdle);
+            this._minimizeTargetIdle = 0;
+        }
+
         global.display.disconnectObject(this);
         this._disposeColorWatch?.();
         this._disposeColorWatch = null;
 
         this._autohide?.destroy();
         this._autohide = null;
+
+        this._appTray?.destroy();
+        this._appTray = null;
 
         this._systemTray?.destroy();
         this._systemTray = null;

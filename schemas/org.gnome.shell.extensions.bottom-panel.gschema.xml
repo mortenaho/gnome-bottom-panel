@@ -5,29 +5,57 @@
 
     <key name="panel-height" type="i">
       <default>48</default>
-      <summary>Panel height</summary>
-      <description>Height of the bottom panel in logical pixels (scaled for HiDPI).</description>
+      <summary>Panel height (small monitors)</summary>
+      <description>Panel height on small monitors, in logical pixels. Should be at least icon-size + 8.</description>
       <range min="32" max="96"/>
     </key>
 
     <key name="icon-size" type="i">
       <default>32</default>
-      <summary>App icon size</summary>
-      <description>Size of application icons in the taskbar, in logical pixels.</description>
+      <summary>App icon size (small monitors)</summary>
+      <description>Taskbar icon size on small monitors. Prefer 16, 22, 24, 32, 48, or 64 for sharp icons.</description>
       <range min="16" max="64"/>
     </key>
 
     <key name="tray-icon-size" type="i">
       <default>22</default>
-      <summary>Tray icon size</summary>
-      <description>Size of system tray / right-side icons (Quick Settings, keyboard flag, etc.), in logical pixels. The keyboard flag height matches this value.</description>
+      <summary>Tray icon size (small monitors)</summary>
+      <description>Tray / system indicator size on small monitors, in logical pixels.</description>
       <range min="12" max="48"/>
     </key>
 
+    <key name="panel-height-large" type="i">
+      <default>64</default>
+      <summary>Panel height (large monitors)</summary>
+      <description>Panel height on large / ultrawide monitors, in logical pixels.</description>
+      <range min="32" max="96"/>
+    </key>
+
+    <key name="icon-size-large" type="i">
+      <default>48</default>
+      <summary>App icon size (large monitors)</summary>
+      <description>Taskbar icon size on large / ultrawide monitors. Prefer 32, 48, or 64 for sharp icons.</description>
+      <range min="16" max="64"/>
+    </key>
+
+    <key name="tray-icon-size-large" type="i">
+      <default>28</default>
+      <summary>Tray icon size (large monitors)</summary>
+      <description>Tray / system indicator size on large / ultrawide monitors, in logical pixels.</description>
+      <range min="12" max="48"/>
+    </key>
+
+    <key name="large-monitor-min-width" type="i">
+      <default>2560</default>
+      <summary>Large monitor width threshold</summary>
+      <description>Monitors whose width×scale is at or above this value use the large size profile. Full HD laptop (~1920) stays small; ultrawide / 4K (≥2560 device pixels) use large.</description>
+      <range min="1280" max="7680"/>
+    </key>
+
     <key name="panel-item-order" type="as">
-      <default>['clock', 'keyboard', 'system']</default>
+      <default>['tray', 'keyboard', 'system', 'clock']</default>
       <summary>Right-side item order</summary>
-      <description>Order of right-side panel items. Known ids: clock, system, keyboard.</description>
+      <description>Order of right-side panel items. Known ids: tray, clock, system, keyboard.</description>
     </key>
 
     <key name="panel-spacing" type="i">
@@ -204,6 +232,19 @@
       <default>true</default>
       <summary>Show system indicators</summary>
       <description>Move Quick Settings and related system indicators into the bottom panel.</description>
+    </key>
+
+    <key name="show-app-tray" type="b">
+      <default>true</default>
+      <summary>Show app tray icons</summary>
+      <description>Show AppIndicator / status tray icons (Telegram, AnyDesk, download managers, …) on the right side. Requires Ubuntu AppIndicators or a compatible extension. Icons can sit behind a Windows-like chevron overflow.</description>
+    </key>
+
+    <key name="tray-max-visible" type="i">
+      <default>0</default>
+      <summary>Max visible tray icons</summary>
+      <description>Number of app tray icons shown inline on the panel. 0 hides all behind the chevron flyout (Windows 11 style).</description>
+      <range min="0" max="16"/>
     </key>
 
     <key name="multi-monitor" type="b">

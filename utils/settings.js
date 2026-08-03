@@ -7,6 +7,10 @@
 
 import Gio from 'gi://Gio';
 
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+
+import {fitIconSize, fitPanelHeight} from './theming.js';
+
 /** @type {Gio.Settings|null} */
 let _settings = null;
 
@@ -31,6 +35,21 @@ function normalizeClockLedColor(value) {
     if (/^#[0-9a-f]{3}$/.test(raw))
         return `#${raw[1]}${raw[1]}${raw[2]}${raw[2]}${raw[3]}${raw[3]}`;
     return LED_PRESETS.red;
+}
+
+/**
+ * @param {number} panelHeight
+ * @param {number} iconSize
+ * @param {number} trayIconSize
+ * @returns {{panelHeight: number, iconSize: number, trayIconSize: number}}
+ */
+function fitSizeProfile(panelHeight, iconSize, trayIconSize) {
+    const height = fitPanelHeight(panelHeight, iconSize);
+    const icon = fitIconSize(iconSize, height);
+    const tray = Math.min(
+        Math.max(12, Math.round(Number(trayIconSize) || 22)),
+        Math.max(12, height - 8));
+    return {panelHeight: height, iconSize: icon, trayIconSize: tray};
 }
 
 /**
@@ -78,16 +97,68 @@ export function onSettingsChanged(keys, callback) {
 }
 
 /**
+ * Whether a monitor should use the large size profile.
+ * Compares device-ish width (logical × scale) so 4K@200% still counts as large.
+ *
+ * @param {number} monitorIndex
+ * @param {number} [minWidth]
+ * @returns {boolean}
+ */
+export function isLargeMonitor(monitorIndex, minWidth) {
+    const monitor = Main.layoutManager.monitors[monitorIndex];
+    if (!monitor)
+        return false;
+    const threshold = Math.max(
+        1280,
+        Math.round(Number(minWidth) || getSettings().get_int('large-monitor-min-width')));
+    let scale = 1;
+    try {
+        scale = global.display.get_monitor_scale(monitorIndex) || 1;
+    } catch (_e) {
+        scale = 1;
+    }
+    return Math.round(monitor.width * scale) >= threshold;
+}
+
+/**
+ * Shared options plus size fields for one monitor (small vs large profile).
+ *
+ * @param {number} monitorIndex
+ * @returns {object}
+ */
+export function getPanelOptionsForMonitor(monitorIndex) {
+    const base = getPanelOptions();
+    const large = isLargeMonitor(monitorIndex, base.largeMonitorMinWidth);
+    const sizes = large ? base.largeSizes : base.smallSizes;
+    return {
+        ...base,
+        ...sizes,
+        sizeProfile: large ? 'large' : 'small',
+    };
+}
+
+/**
  * Snapshot of visual / layout settings used by BottomPanel.
+ * Size fields (`panelHeight`, `iconSize`, `trayIconSize`) are the small
+ * profile defaults; use {@link getPanelOptionsForMonitor} per panel.
  *
  * @returns {object}
  */
 export function getPanelOptions() {
     const s = getSettings();
+    const smallSizes = fitSizeProfile(
+        s.get_int('panel-height'),
+        s.get_int('icon-size'),
+        s.get_int('tray-icon-size'));
+    const largeSizes = fitSizeProfile(
+        s.get_int('panel-height-large'),
+        s.get_int('icon-size-large'),
+        s.get_int('tray-icon-size-large'));
     return {
-        panelHeight: s.get_int('panel-height'),
-        iconSize: s.get_int('icon-size'),
-        trayIconSize: s.get_int('tray-icon-size'),
+        ...smallSizes,
+        smallSizes,
+        largeSizes,
+        largeMonitorMinWidth: s.get_int('large-monitor-min-width'),
         panelItemOrder: s.get_strv('panel-item-order'),
         panelSpacing: s.get_int('panel-spacing'),
         panelMargin: s.get_int('panel-margin'),
@@ -112,6 +183,8 @@ export function getPanelOptions() {
         clockSegmentThickness: s.get_int('clock-segment-thickness'),
         clockHourFormat: s.get_string('clock-hour-format'),
         showSystemIndicators: s.get_boolean('show-system-indicators'),
+        showAppTray: s.get_boolean('show-app-tray'),
+        trayMaxVisible: s.get_int('tray-max-visible'),
         multiMonitor: s.get_boolean('multi-monitor'),
         isolateMonitors: s.get_boolean('isolate-monitors'),
         isolateWorkspaces: s.get_boolean('isolate-workspaces'),

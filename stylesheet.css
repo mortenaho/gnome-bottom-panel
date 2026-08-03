@@ -83,9 +83,19 @@
     background: transparent;
 }
 
+/* Horizontal overflow: wheel-scrollable, no visible scrollbar chrome */
+.bottom-panel-dash-scroll {
+    background: transparent;
+}
+
+.bottom-panel-dash-scroll StScrollBar {
+    min-height: 0;
+    min-width: 0;
+}
+
 .bottom-panel-app-icon {
     border-radius: 6px;
-    padding: 4px 6px;
+    padding: 4px;
     transition-duration: 100ms;
 }
 
@@ -171,6 +181,70 @@
     padding: 2px;
 }
 
+/* —— App indicator tray + Windows-like overflow —— */
+
+.bottom-panel-app-tray {
+    spacing: 2px;
+    padding: 0 2px;
+}
+
+.bottom-panel-app-tray-visible {
+    spacing: 2px;
+}
+
+.bottom-panel-app-tray-overflow {
+    border-radius: 6px;
+    padding: 4px 6px;
+    margin: 0 2px;
+    min-width: 24px;
+    min-height: 24px;
+}
+
+.bottom-panel-app-tray-overflow:hover,
+.bottom-panel-app-tray-overflow:active {
+    background-color: rgba(128, 128, 128, 0.22);
+}
+
+.bottom-panel-dark .bottom-panel-app-tray-overflow:hover,
+.bottom-panel-dark .bottom-panel-app-tray-overflow:active {
+    background-color: rgba(255, 255, 255, 0.10);
+}
+
+/* Custom flyout (not PopupMenu) so tray icons keep their own menus */
+.bottom-panel-app-tray-flyout {
+    spacing: 0;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background-color: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+
+.bottom-panel-dark .bottom-panel-app-tray-flyout {
+    background-color: rgba(40, 40, 40, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+.bottom-panel-app-tray-overflow-box {
+    spacing: 8px;
+    padding: 2px;
+}
+
+/* SNI text labels ("...") — icon-only tray like Windows */
+.bottom-panel-app-tray-flyout StLabel,
+.bottom-panel-app-tray-visible StLabel,
+.bottom-panel-app-tray-overflow-box StLabel {
+    font-size: 0px;
+    width: 0px;
+    height: 0px;
+    min-width: 0px;
+    min-height: 0px;
+    padding: 0;
+    margin: 0;
+    opacity: 0;
+}
+
 /* —— Workspace dots —— */
 
 .bottom-panel-ws-indicator {
@@ -215,11 +289,12 @@
 
 .bottom-panel-seven-seg {
     padding: 0 8px;
+    /* Width is locked in JS from DSEG advances — never shrink/clip digits. */
 }
 
 .seven-seg-label {
-    font-family: "DSEG7 Classic", monospace;
-    font-weight: 700;
+    font-family: "DSEG7 Classic";
+    font-weight: bold;
 }
 
 /* —— Keyboard layout (flat rectangular PNG flags) —— */

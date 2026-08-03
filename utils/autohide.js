@@ -6,9 +6,14 @@
  * - Reveal from the bottom screen edge
  * - Overview / modal dialogs keep the panel visible
  *
- * Uses pointer-position hysteresis (not Actor.hover) so slide animations
- * cannot bounce the panel. The actor stays mapped; "hidden" means
- * translated off-screen with reactive=false. Auto-hide disables struts.
+ * Bounce-prevention over maximized windows:
+ * - Animation generation tokens ignore stale onStopped callbacks
+ * - Show grace + hide cooldown stop immediate reverse animations
+ * - After hide, pointer must leave the edge before another reveal
+ * - Hide abort only if the pointer is still in the edge show zone
+ *
+ * The actor stays mapped; "hidden" means translated off-screen with
+ * reactive=false. Auto-hide disables struts.
  */
 
 import Clutter from 'gi://Clutter';
@@ -18,12 +23,16 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 const SHOW_MS = 220;
 const HIDE_MS = 180;
-const HOT_EDGE_SIZE = 6;
+const HOT_EDGE_SIZE = 4;
 /** Pointer must enter this many px from the bottom to reveal. */
-const SHOW_ZONE = 6;
-/** Extra gap above the panel before a hide is allowed (hysteresis). */
-const HIDE_HYSTERESIS = 36;
-const POINTER_POLL_MS = 80;
+const SHOW_ZONE = 4;
+/** Extra gap above the panel before a hide is allowed. */
+const HIDE_HYSTERESIS = 12;
+const POINTER_POLL_MS = 100;
+/** After revealing, ignore hide requests briefly. */
+const SHOW_GRACE_MS = 450;
+/** After hiding, ignore reveal requests briefly. */
+const HIDE_COOLDOWN_MS = 400;
 
 export class AutohideController {
     /**
@@ -34,8 +43,15 @@ export class AutohideController {
         this._enabled = false;
         this._hidden = false;
         this._animating = false;
+        this._animToken = 0;
         this._delay = 400;
         this._hideTimeout = 0;
+        this._graceTimeout = 0;
+        this._cooldownTimeout = 0;
+        this._inShowGrace = false;
+        this._inHideCooldown = false;
+        /** Require pointer to leave the edge before the next reveal. */
+        this._edgeArmed = true;
         this._pollId = 0;
         this._hotEdge = null;
         this._overviewIds = [];
@@ -77,6 +93,7 @@ export class AutohideController {
 
     _enable() {
         this._enabled = true;
+        this._edgeArmed = true;
         this._panel._setAffectsStruts(false);
 
         this._overviewIds.push(
@@ -92,6 +109,8 @@ export class AutohideController {
     _disable() {
         this._enabled = false;
         this._clearHideTimeout();
+        this._clearGrace();
+        this._clearCooldown();
         this._stopPointerPoll();
         this._disconnectOverview();
         this._destroyHotEdge();
@@ -130,25 +149,7 @@ export class AutohideController {
     }
 
     /**
-     * Inside or just above the visible dock — keep it shown.
-     *
-     * @returns {boolean}
-     */
-    _isPointerOverDock() {
-        const monitor = Main.layoutManager.monitors[this._panel.monitorIndex];
-        if (!monitor)
-            return false;
-
-        const [x, y] = global.get_pointer();
-        if (x < monitor.x || x >= monitor.x + monitor.width)
-            return false;
-
-        const top = monitor.y + monitor.height - this._panelHeight();
-        return y >= top - 4 && y <= monitor.y + monitor.height + 2;
-    }
-
-    /**
-     * Clearly above the dock — only then may we hide (hysteresis).
+     * Clearly above the dock — only then may we hide.
      *
      * @returns {boolean}
      */
@@ -204,17 +205,26 @@ export class AutohideController {
 
         if (this._isBlockedByShell()) {
             this._clearHideTimeout();
+            this._edgeArmed = true;
             if (this._hidden)
                 this._showImmediate();
             return;
         }
 
+        // Re-arm reveal only after the pointer leaves the bottom edge.
+        if (!this._edgeArmed && !this._isPointerInShowZone())
+            this._edgeArmed = true;
+
         if (this._hidden) {
             this._clearHideTimeout();
-            if (this._isPointerInShowZone() || this._hotEdge?.hover)
+            if (this._canReveal() &&
+                (this._isPointerInShowZone() || this._hotEdge?.hover))
                 this._show();
             return;
         }
+
+        if (this._inShowGrace)
+            return;
 
         // Panel is shown: hide only once the pointer is clearly away.
         if (this._isPointerFarFromDock())
@@ -223,8 +233,13 @@ export class AutohideController {
             this._clearHideTimeout();
     }
 
+    /** @returns {boolean} */
+    _canReveal() {
+        return this._edgeArmed && !this._inHideCooldown;
+    }
+
     _queueHide() {
-        if (!this._enabled || this._hidden || this._animating)
+        if (!this._enabled || this._hidden || this._animating || this._inShowGrace)
             return;
         if (this._isBlockedByShell())
             return;
@@ -254,8 +269,50 @@ export class AutohideController {
         }
     }
 
+    _clearGrace() {
+        if (this._graceTimeout) {
+            GLib.Source.remove(this._graceTimeout);
+            this._graceTimeout = 0;
+        }
+        this._inShowGrace = false;
+    }
+
+    _clearCooldown() {
+        if (this._cooldownTimeout) {
+            GLib.Source.remove(this._cooldownTimeout);
+            this._cooldownTimeout = 0;
+        }
+        this._inHideCooldown = false;
+    }
+
+    _beginShowGrace() {
+        this._clearGrace();
+        this._inShowGrace = true;
+        this._graceTimeout = GLib.timeout_add(
+            GLib.PRIORITY_DEFAULT, SHOW_GRACE_MS, () => {
+                this._graceTimeout = 0;
+                this._inShowGrace = false;
+                this._evaluatePointer();
+                return GLib.SOURCE_REMOVE;
+            });
+    }
+
+    _beginHideCooldown() {
+        this._clearCooldown();
+        this._inHideCooldown = true;
+        // Stay disarmed while the pointer remains on the edge.
+        this._edgeArmed = !this._isPointerInShowZone();
+        this._cooldownTimeout = GLib.timeout_add(
+            GLib.PRIORITY_DEFAULT, HIDE_COOLDOWN_MS, () => {
+                this._cooldownTimeout = 0;
+                this._inHideCooldown = false;
+                this._evaluatePointer();
+                return GLib.SOURCE_REMOVE;
+            });
+    }
+
     _tryHide() {
-        if (!this._enabled || this._hidden || this._animating)
+        if (!this._enabled || this._hidden || this._animating || this._inShowGrace)
             return;
         if (this._isBlockedByShell()) {
             this._showImmediate();
@@ -271,10 +328,19 @@ export class AutohideController {
         return this._panelHeight() + 8;
     }
 
-    _showImmediate() {
-        this._clearHideTimeout();
+    /** Invalidate in-flight animation callbacks. */
+    _invalidateAnimation() {
+        this._animToken++;
         this._animating = false;
         this._panel.remove_all_transitions();
+    }
+
+    _showImmediate() {
+        this._clearHideTimeout();
+        this._clearGrace();
+        this._clearCooldown();
+        this._invalidateAnimation();
+        this._edgeArmed = true;
         this._panel.reactive = true;
         this._panel.translation_y = 0;
         this._panel.opacity = 255;
@@ -290,6 +356,10 @@ export class AutohideController {
             return;
 
         this._clearHideTimeout();
+        this._clearCooldown();
+        this._invalidateAnimation();
+        const token = this._animToken;
+
         this._hidden = false;
         this._animating = true;
         this._panel.reactive = true;
@@ -297,25 +367,24 @@ export class AutohideController {
         if (!this._panel.visible)
             this._panel.show();
 
-        // Start from off-screen if we were fully tucked.
         if (this._panel.translation_y < 2 && this._panel.opacity < 10)
             this._panel.translation_y = this._hideOffset();
 
         this._syncHotEdgeVisibility();
+        this._beginShowGrace();
 
-        this._panel.remove_all_transitions();
         this._panel.ease({
             opacity: 255,
             translation_y: 0,
             duration: SHOW_MS,
             mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
             onStopped: () => {
+                if (token !== this._animToken)
+                    return;
                 this._animating = false;
                 this._panel.translation_y = 0;
                 this._panel.opacity = 255;
                 this._syncHotEdgeVisibility();
-                // If the pointer already left during the show animation, hide.
-                this._evaluatePointer();
             },
         });
     }
@@ -324,27 +393,38 @@ export class AutohideController {
         if (this._hidden || this._animating)
             return;
 
+        this._clearHideTimeout();
+        this._invalidateAnimation();
+        const token = this._animToken;
+
         this._hidden = true;
         this._animating = true;
         this._panel.reactive = false;
 
-        this._panel.remove_all_transitions();
         this._panel.ease({
             opacity: 0,
             translation_y: this._hideOffset(),
             duration: HIDE_MS,
             mode: Clutter.AnimationMode.EASE_IN_CUBIC,
             onStopped: () => {
+                if (token !== this._animToken)
+                    return;
                 this._animating = false;
-                // Abort if the pointer came back during the animation.
-                if (this._isPointerInShowZone() || this._isPointerOverDock() ||
-                    !this._isPointerFarFromDock()) {
+
+                // Only abort hide if the user is still pushing the edge.
+                // Do NOT use the large "near dock" band — that bounced over
+                // maximized windows when the pointer rested in the lower area.
+                if (this._isPointerInShowZone() && this._canReveal()) {
                     this._hidden = false;
                     this._show();
                     return;
                 }
+
                 this._panel.reactive = false;
+                this._panel.translation_y = this._hideOffset();
+                this._panel.opacity = 0;
                 this._syncHotEdgeVisibility();
+                this._beginHideCooldown();
             },
         });
     }
@@ -360,7 +440,7 @@ export class AutohideController {
         });
 
         this._hotEdge.connect('enter-event', () => {
-            if (this._hidden && !this._animating)
+            if (this._hidden && !this._animating && this._canReveal())
                 this._show();
         });
 

@@ -36,31 +36,22 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
             icon_name: 'preferences-desktop-appearance-symbolic',
         });
 
-        const group = new Adw.PreferencesGroup({
+        const look = new Adw.PreferencesGroup({
             title: _('Panel look'),
-            description: _('Size, corners, color, opacity, and blur'),
+            description: _('Corners, color, opacity, and blur'),
         });
-        page.add(group);
+        page.add(look);
 
-        group.add(this._spinRow(settings, 'panel-height', _('Height'),
-            _('Logical pixels; scaled automatically on HiDPI monitors'),
-            32, 96, 1));
-        group.add(this._spinRow(settings, 'icon-size', _('Icon size'),
-            _('Application icon size in the taskbar'),
-            16, 64, 1));
-        group.add(this._spinRow(settings, 'tray-icon-size', _('Tray icon size'),
-            _('System indicators and keyboard icon size on the right'),
-            12, 48, 1));
-        group.add(this._spinRow(settings, 'panel-margin', _('Margin'),
+        look.add(this._spinRow(settings, 'panel-margin', _('Margin'),
             _('Gap from screen edges (floating dock when > 0)'),
             0, 24, 1));
-        group.add(this._spinRow(settings, 'border-radius', _('Corner radius'),
+        look.add(this._spinRow(settings, 'border-radius', _('Corner radius'),
             null, 0, 32, 1));
-        group.add(this._spinRow(settings, 'panel-spacing', _('Spacing'),
+        look.add(this._spinRow(settings, 'panel-spacing', _('Spacing'),
             _('Padding inside the panel'),
             0, 32, 1));
 
-        group.add(this._switchRow(settings, 'use-custom-panel-color',
+        look.add(this._switchRow(settings, 'use-custom-panel-color',
             _('Custom panel color'),
             _('Override the light/dark theme background with a chosen color')));
 
@@ -97,7 +88,7 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
 
         settings.bind('use-custom-panel-color', colorRow, 'sensitive',
             Gio.SettingsBindFlags.DEFAULT);
-        group.add(colorRow);
+        look.add(colorRow);
 
         const opacity = new Adw.SpinRow({
             title: _('Opacity'),
@@ -112,12 +103,56 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
         });
         settings.bind('panel-opacity', opacity, 'value',
             Gio.SettingsBindFlags.DEFAULT);
-        group.add(opacity);
+        look.add(opacity);
 
-        group.add(this._switchRow(settings, 'enable-blur', _('Background blur'),
+        look.add(this._switchRow(settings, 'enable-blur', _('Background blur'),
             _('Uses Shell.BlurEffect when the compositor supports it')));
 
+        page.add(this._buildSizeProfileGroup(settings, 'small'));
+        page.add(this._buildSizeProfileGroup(settings, 'large'));
+
+        const threshold = new Adw.PreferencesGroup({
+            title: _('Monitor size switch'),
+            description: _('Width at or above this uses the large profile'),
+        });
+        page.add(threshold);
+        threshold.add(this._spinRow(settings, 'large-monitor-min-width',
+            _('Large monitor from width'),
+            _('Compares width×scale — e.g. 1920 laptop stays small; 2560+ ultrawide/4K uses large'),
+            1280, 7680, 80));
+
         return page;
+    }
+
+    /**
+     * @param {Gio.Settings} settings
+     * @param {'small'|'large'} profile
+     * @returns {Adw.PreferencesGroup}
+     */
+    _buildSizeProfileGroup(settings, profile) {
+        const large = profile === 'large';
+        const group = new Adw.PreferencesGroup({
+            title: large ? _('Large monitors') : _('Small monitors'),
+            description: large
+                ? _('Ultrawide / 4K and other wide displays')
+                : _('Laptops and regular Full HD monitors'),
+        });
+
+        const heightKey = large ? 'panel-height-large' : 'panel-height';
+        const iconKey = large ? 'icon-size-large' : 'icon-size';
+        const trayKey = large ? 'tray-icon-size-large' : 'tray-icon-size';
+
+        group.add(this._spinRow(settings, heightKey, _('Panel height'),
+            _('Logical pixels; at least icon size + 8'),
+            32, 96, 1));
+        group.add(this._spinRow(settings, iconKey, _('Icon size'),
+            _('Prefer 16, 22, 24, 32, 48, or 64 for sharp icons'),
+            16, 64, 1));
+        group.add(this._spinRow(settings, trayKey, _('Tray icon size'),
+            _('System indicators and keyboard flag height'),
+            12, 48, 1));
+        this._linkPanelIconSizes(settings, heightKey, iconKey, trayKey);
+        return group;
     }
 
     /**
@@ -189,6 +224,13 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
         contents.add(this._switchRow(settings, 'show-system-indicators',
             _('System indicators'),
             _('Quick Settings: Wi-Fi, Bluetooth, volume, brightness, battery, power')));
+        contents.add(this._switchRow(settings, 'show-app-tray',
+            _('App tray icons'),
+            _('Status icons from apps (Telegram, AnyDesk, download managers, …) via Ubuntu AppIndicators')));
+        contents.add(this._spinRow(settings, 'tray-max-visible',
+            _('Max visible tray icons'),
+            _('0 = Windows-style: all icons behind the ↑ chevron; higher keeps some on the panel'),
+            0, 16, 1));
 
         page.add(this._buildItemOrderGroup(settings));
 
@@ -549,8 +591,9 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
      * @returns {Adw.PreferencesGroup}
      */
     _buildItemOrderGroup(settings) {
-        const DEFAULT = ['clock', 'keyboard', 'system'];
+        const DEFAULT = ['tray', 'keyboard', 'system', 'clock'];
         const LABELS = {
+            tray: _('App tray'),
             clock: _('Clock'),
             system: _('System indicators'),
             keyboard: _('Keyboard layout'),
@@ -692,6 +735,45 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
             0, 5000, 50));
 
         return page;
+    }
+
+    /**
+     * Keep panel height ≥ icon size + padding so taskbar icons stay square.
+     *
+     * @param {Gio.Settings} settings
+     * @param {string} heightKey
+     * @param {string} iconKey
+     * @param {string} trayKey
+     */
+    _linkPanelIconSizes(settings, heightKey, iconKey, trayKey) {
+        const PAD = 8;
+        let syncing = false;
+
+        const ensureFit = (fromIcon) => {
+            if (syncing)
+                return;
+            syncing = true;
+            try {
+                const height = settings.get_int(heightKey);
+                const icon = settings.get_int(iconKey);
+                const need = icon + PAD;
+                if (fromIcon && height < need)
+                    settings.set_int(heightKey, Math.min(96, need));
+                else if (!fromIcon && icon > height - PAD)
+                    settings.set_int(iconKey, Math.max(16, height - PAD));
+
+                const tray = settings.get_int(trayKey);
+                const maxTray = Math.max(12, settings.get_int(heightKey) - PAD);
+                if (tray > maxTray)
+                    settings.set_int(trayKey, maxTray);
+            } finally {
+                syncing = false;
+            }
+        };
+
+        settings.connect(`changed::${iconKey}`, () => ensureFit(true));
+        settings.connect(`changed::${heightKey}`, () => ensureFit(false));
+        ensureFit(true);
     }
 
     /**

@@ -4,6 +4,9 @@
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
+/** Tiny height so overview layout stops reserving dock space. */
+const HIDDEN_DASH_HEIGHT = 1;
+
 export class ChromeController {
     constructor() {
         this._panelBoxVisible = true;
@@ -13,6 +16,10 @@ export class ChromeController {
         this._overviewDashHeight = -1;
         this._allocationId = 0;
         this._active = false;
+        this._overviewShowingId = 0;
+        this._overviewShownId = 0;
+        this._dashVisibleId = 0;
+        this._hidingDash = false;
     }
 
     hideTopPanel() {
@@ -69,32 +76,120 @@ export class ChromeController {
         global.display.emit('workareas-changed');
     }
 
+    /**
+     * Hide the stock Activities overview dash (GNOME 50 re-shows it on
+     * overview transitions unless we keep re-applying).
+     */
     hideOverviewDash() {
-        const dash = Main.overview.dash;
-        if (!dash || this._overviewDashHidden)
+        const dash = this._getOverviewDash();
+        if (!dash)
             return;
 
-        this._overviewDashHeight = dash.height;
-        dash.hide();
-        dash.height = 0;
+        if (!this._overviewDashHidden) {
+            this._overviewDashHeight = dash.height > 0 ? dash.height : -1;
+            this._connectDashHooks(dash);
+        }
+
         this._overviewDashHidden = true;
+        this._applyDashHidden();
     }
 
     restoreOverviewDash() {
         if (!this._overviewDashHidden)
             return;
 
-        const dash = Main.overview.dash;
+        this._disconnectDashHooks();
+        this._overviewDashHidden = false;
+
+        const dash = this._getOverviewDash();
         if (dash) {
-            dash.show();
-            dash.height = this._overviewDashHeight >= 0
-                ? this._overviewDashHeight
-                : -1;
-            dash.setMaxSize?.(-1, -1);
+            this._hidingDash = true;
+            try {
+                dash.opacity = 255;
+                dash.reactive = true;
+                dash.set_height(this._overviewDashHeight >= 0
+                    ? this._overviewDashHeight
+                    : -1);
+                dash.show();
+                dash.setMaxSize?.(-1, -1);
+            } finally {
+                this._hidingDash = false;
+            }
         }
 
-        this._overviewDashHidden = false;
         this._overviewDashHeight = -1;
+    }
+
+    /**
+     * @returns {import('gi://St').St.Widget|null}
+     */
+    _getOverviewDash() {
+        return Main.overview?.dash ??
+            Main.overview?._overview?.controls?.dash ??
+            Main.overview?._overview?._controls?.dash ??
+            null;
+    }
+
+    /**
+     * @param {object} dash
+     */
+    _connectDashHooks(dash) {
+        if (!this._overviewShowingId) {
+            this._overviewShowingId = Main.overview.connect(
+                'showing', () => this._applyDashHidden());
+        }
+        if (!this._overviewShownId) {
+            this._overviewShownId = Main.overview.connect(
+                'shown', () => this._applyDashHidden());
+        }
+        if (!this._dashVisibleId && dash) {
+            this._dashVisibleId = dash.connect('notify::visible', () => {
+                if (this._overviewDashHidden && !this._hidingDash && dash.visible)
+                    this._applyDashHidden();
+            });
+        }
+    }
+
+    _disconnectDashHooks() {
+        if (this._overviewShowingId) {
+            Main.overview.disconnect(this._overviewShowingId);
+            this._overviewShowingId = 0;
+        }
+        if (this._overviewShownId) {
+            Main.overview.disconnect(this._overviewShownId);
+            this._overviewShownId = 0;
+        }
+        if (this._dashVisibleId) {
+            const dash = this._getOverviewDash();
+            try {
+                dash?.disconnect?.(this._dashVisibleId);
+            } catch (_e) {
+                // disposed
+            }
+            this._dashVisibleId = 0;
+        }
+    }
+
+    _applyDashHidden() {
+        if (!this._overviewDashHidden)
+            return;
+
+        const dash = this._getOverviewDash();
+        if (!dash)
+            return;
+
+        this._hidingDash = true;
+        try {
+            dash.hide();
+            dash.set_height(HIDDEN_DASH_HEIGHT);
+            dash.opacity = 0;
+            dash.reactive = false;
+            // Cancel any overview "slide up from bottom" animation residue.
+            dash.translation_y = 0;
+            dash.remove_all_transitions?.();
+        } finally {
+            this._hidingDash = false;
+        }
     }
 
     destroy() {
@@ -124,17 +219,37 @@ export function isExtensionEnabled(uuid) {
  * @returns {() => void}
  */
 export function disableConflictingExtension(uuid) {
-    if (!isExtensionEnabled(uuid))
-        return () => {};
-
+    const enabled = global.settings.get_strv('enabled-extensions');
     const disabled = global.settings.get_strv('disabled-extensions');
-    if (disabled.includes(uuid))
-        return () => {};
+    const wasEnabled = enabled.includes(uuid) || isExtensionEnabled(uuid);
+    let addedToDisabled = false;
 
-    disabled.push(uuid);
-    global.settings.set_strv('disabled-extensions', disabled);
+    if (!disabled.includes(uuid)) {
+        disabled.push(uuid);
+        global.settings.set_strv('disabled-extensions', disabled);
+        addedToDisabled = true;
+    }
+
+    // Drop from enabled-extensions even if already marked disabled — Ubuntu
+    // sometimes keeps system docks in both lists.
+    if (enabled.includes(uuid)) {
+        global.settings.set_strv(
+            'enabled-extensions',
+            enabled.filter(u => u !== uuid));
+    }
+
+    try {
+        Main.extensionManager?.disableExtension?.(uuid);
+    } catch (_e) {
+        // ignore
+    }
+
+    if (!wasEnabled && !addedToDisabled)
+        return () => {};
 
     return () => {
+        if (!addedToDisabled)
+            return;
         const current = global.settings.get_strv('disabled-extensions');
         const next = current.filter(u => u !== uuid);
         if (next.length !== current.length)
