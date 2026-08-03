@@ -1,5 +1,6 @@
 /**
  * Favorites + running apps based on the stock GNOME Dash.
+ * Left-click shows Windows-like window previews when an app has multiple instances.
  */
 
 import Clutter from 'gi://Clutter';
@@ -11,6 +12,144 @@ import St from 'gi://St';
 import * as AppFavorites from 'resource:///org/gnome/shell/ui/appFavorites.js';
 import * as Dash from 'resource:///org/gnome/shell/ui/dash.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+
+import {WindowPreviewMenu} from './windowPreview.js';
+
+/**
+ * Dash icon with Windows-like multi-window activation.
+ */
+export const PanelDashIcon = GObject.registerClass(
+class PanelDashIcon extends Dash.DashIcon {
+    /**
+     * @param {Shell.App} app
+     * @param {PanelDash} panelDash
+     */
+    _init(app, panelDash) {
+        super._init(app);
+        this._panelDash = panelDash;
+        this._previewMenu = null;
+        this._previewMenuManager = null;
+
+        this.connect('destroy', () => {
+            this._previewMenu?.destroy();
+            this._previewMenu = null;
+            this._previewMenuManager = null;
+        });
+    }
+
+    /**
+     * Windows for this app, filtered by isolate settings and skip-taskbar.
+     *
+     * @returns {Meta.Window[]}
+     */
+    getInterestingWindows() {
+        const params = this._panelDash._bpParams;
+        let windows = this.app.get_windows().filter(w => !w.is_skip_taskbar());
+
+        if (params.isolateWorkspaces) {
+            const activeWs = global.workspace_manager.get_active_workspace();
+            windows = windows.filter(w => w.located_on_workspace(activeWs));
+        }
+
+        if (params.isolateMonitors) {
+            const monitorIndex = this._panelDash._monitorIndex;
+            windows = windows.filter(w => w.get_monitor() === monitorIndex);
+        }
+
+        return windows;
+    }
+
+    _isAppFocused() {
+        const focusWindow = global.display.focus_window;
+        if (!focusWindow)
+            return false;
+
+        const windows = this.getInterestingWindows();
+        return windows.some(w =>
+            w === focusWindow ||
+            focusWindow.is_attached_dialog() && focusWindow.get_transient_for() === w);
+    }
+
+    _toggleWindowPreviews() {
+        if (!this._previewMenu) {
+            this._previewMenuManager = new PopupMenu.PopupMenuManager(this);
+            this._previewMenu = new WindowPreviewMenu(this);
+            this._previewMenuManager.addMenu(this._previewMenu);
+
+            this._previewMenu.connect('open-state-changed', (_menu, isOpen) => {
+                this.emit('menu-state-changed', isOpen);
+                if (!isOpen)
+                    this.sync_hover();
+            });
+
+            const overviewId = Main.overview.connect('hiding', () => {
+                this._previewMenu?.close();
+            });
+            this._previewMenu.actor.connect('destroy', () => {
+                Main.overview.disconnect(overviewId);
+            });
+        }
+
+        if (this._previewMenu.isOpen)
+            this._previewMenu.close();
+        else
+            this._previewMenu.popup();
+    }
+
+    /**
+     * @param {number} [button]
+     */
+    activate(button) {
+        const event = Clutter.get_current_event();
+        const modifiers = event ? event.get_state() : 0;
+        const isMiddleButton = button === Clutter.BUTTON_MIDDLE;
+        const isCtrlPressed = (modifiers & Clutter.ModifierType.CONTROL_MASK) !== 0;
+        const openNewWindow = this.app.can_open_new_window() &&
+            this.app.state === Shell.AppState.RUNNING &&
+            (isCtrlPressed || isMiddleButton);
+
+        if (openNewWindow) {
+            this.animateLaunch();
+            this.app.open_new_window(-1);
+            Main.overview.hide();
+            return;
+        }
+
+        if (this.app.state === Shell.AppState.STOPPED) {
+            this.animateLaunch();
+            this.app.activate();
+            Main.overview.hide();
+            return;
+        }
+
+        const windows = this.getInterestingWindows();
+
+        if (windows.length === 0) {
+            this.app.activate();
+            Main.overview.hide();
+            return;
+        }
+
+        if (windows.length === 1) {
+            const [win] = windows;
+            if (this._isAppFocused() && !Main.overview.visible)
+                win.minimize();
+            else
+                Main.activateWindow(win);
+            Main.overview.hide();
+            return;
+        }
+
+        // Multiple instances: show Windows-like thumbnails to pick a window.
+        this._toggleWindowPreviews();
+        Main.overview.hide();
+    }
+
+    shouldShowTooltip() {
+        return super.shouldShowTooltip() && !this._previewMenu?.isOpen;
+    }
+});
 
 /**
  * Bottom-panel-oriented Dash: fixed icon size, horizontal layout, no overview
@@ -57,6 +196,30 @@ class PanelDash extends Dash.Dash {
             this._onItemAdded(child);
 
         this._hookAppFilters();
+    }
+
+    /**
+     * Use PanelDashIcon so left-click can show multi-window previews.
+     *
+     * @param {Shell.App} app
+     */
+    _createAppItem(app) {
+        const item = new Dash.DashItemContainer();
+        const appIcon = new PanelDashIcon(app, this);
+
+        appIcon.connect('menu-state-changed', (_o, opened) => {
+            this._itemMenuStateChanged(item, opened);
+        });
+
+        item.setChild(appIcon);
+
+        appIcon.label_actor = null;
+        item.setLabelText(app.get_name());
+
+        appIcon.icon.setIconSize(this.iconSize);
+        this._hookUpLabel(item, appIcon);
+
+        return item;
     }
 
     _hookAppFilters() {
@@ -109,6 +272,8 @@ class PanelDash extends Dash.Dash {
 
             if (visible && isRunning && (isolateWs || isolateMon)) {
                 const windows = app.get_windows().filter(w => {
+                    if (w.is_skip_taskbar())
+                        return false;
                     if (isolateWs && !w.located_on_workspace(activeWs))
                         return false;
                     if (isolateMon && w.get_monitor() !== monitorIndex)

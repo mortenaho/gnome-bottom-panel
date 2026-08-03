@@ -111,6 +111,59 @@
     border-radius: 6px;
 }
 
+/* —— Multi-window preview flyout (Windows-like) —— */
+
+.bottom-panel-window-preview-menu {
+    border-radius: 10px;
+    padding: 8px;
+}
+
+.bottom-panel-window-preview-list {
+    spacing: 8px;
+    padding: 2px;
+}
+
+.bottom-panel-window-preview-item {
+    border-radius: 8px;
+    padding: 8px;
+    spacing: 0;
+}
+
+.bottom-panel-window-preview-item:hover,
+.bottom-panel-window-preview-item:selected {
+    background-color: rgba(128, 128, 128, 0.22);
+}
+
+.bottom-panel-dark .bottom-panel-window-preview-item:hover,
+.bottom-panel-dark .bottom-panel-window-preview-item:selected {
+    background-color: rgba(255, 255, 255, 0.10);
+}
+
+.bottom-panel-light .bottom-panel-window-preview-item:hover,
+.bottom-panel-light .bottom-panel-window-preview-item:selected {
+    background-color: rgba(0, 0, 0, 0.08);
+}
+
+.bottom-panel-window-preview-box {
+    spacing: 6px;
+}
+
+.bottom-panel-window-preview-clone {
+    border-radius: 6px;
+    background-color: rgba(0, 0, 0, 0.18);
+}
+
+.bottom-panel-window-preview-title {
+    font-size: 0.85em;
+    font-weight: 500;
+    max-width: 220px;
+}
+
+.bottom-panel-window-preview-close {
+    margin: 4px;
+    padding: 2px;
+}
+
 /* —— Workspace dots —— */
 
 .bottom-panel-ws-indicator {
