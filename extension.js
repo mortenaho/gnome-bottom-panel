@@ -15,7 +15,7 @@ import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-import {PanelManager} from './panelManager.js';
+import {PanelManager, setExtensionPath} from './panelManager.js';
 import {
     initSettings,
     clearSettings,
@@ -43,6 +43,7 @@ export default class BottomPanelExtension extends Extension {
 
         const settings = this.getSettings();
         initSettings(settings);
+        setExtensionPath(this.path);
 
         // Do NOT disable docks until the bottom panel is successfully created.
         // Otherwise a crash during setup leaves the user with no chrome.

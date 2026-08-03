@@ -41,6 +41,7 @@ pack: schemas
 		indicators \
 		widgets \
 		utils \
+		flags \
 		schemas \
 		README.md \
 		-x "*.gschema.xml~" -x "*~"

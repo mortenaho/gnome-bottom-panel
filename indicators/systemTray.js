@@ -29,7 +29,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 const SYSTEM_ROLES = [
     'quickSettings',
     'a11y',
-    'keyboard',
+    // 'keyboard' — replaced by indicators/keyboardLayout.js
     'dwellClick',
     'screenRecording',
     'screenSharing',
@@ -79,7 +79,13 @@ export class SystemTrayManager {
     /**
      * @param {St.BoxLayout} targetBox — right-side box of the bottom panel
      * @param {St.BoxLayout} centerBox — center box (for clock when centered)
-     * @param {{showClock: boolean, clockPosition: string, showSystemIndicators: boolean}} options
+     * @param {{
+     *   showClock: boolean,
+     *   clockPosition: string,
+     *   clockStyle?: string,
+     *   showSystemIndicators: boolean,
+     *   showKeyboardLayout?: boolean,
+     * }} options
      */
     constructor(targetBox, centerBox, options) {
         this._targetBox = targetBox;
@@ -98,11 +104,30 @@ export class SystemTrayManager {
         if (!statusArea)
             return;
 
-        if (this._options.showClock && statusArea.dateMenu)
+        const roles = [...SYSTEM_ROLES];
+
+        // Custom keyboard replaces stock when enabled.
+        if (this._options.showKeyboardLayout === false && statusArea.keyboard)
+            roles.push('keyboard');
+
+        if (this._options.showKeyboardLayout && statusArea.keyboard) {
+            this._keyboardWasVisible = statusArea.keyboard.visible;
+            statusArea.keyboard.visible = false;
+        }
+
+        // Native dateMenu clock only when style is default. Seven-segment uses
+        // a custom widget that still toggles dateMenu.menu for the calendar.
+        const useNativeClock = this._options.showClock &&
+            this._options.clockStyle !== 'seven-segment';
+        if (useNativeClock && statusArea.dateMenu)
             this._moveRole('dateMenu', this._clockTarget());
+        else if (this._options.showClock &&
+            this._options.clockStyle === 'seven-segment' &&
+            statusArea.dateMenu?.menu)
+            setMenuOpensUpward(statusArea.dateMenu.menu);
 
         if (this._options.showSystemIndicators) {
-            for (const role of SYSTEM_ROLES) {
+            for (const role of roles) {
                 if (statusArea[role])
                     this._moveRole(role, this._targetBox);
             }
@@ -181,6 +206,11 @@ export class SystemTrayManager {
         this._placements.clear();
         this._menuSides.clear();
         this._roles = [];
+
+        // Restore stock keyboard visibility.
+        const kb = Main.panel.statusArea?.keyboard;
+        if (kb && this._keyboardWasVisible !== undefined)
+            kb.visible = this._keyboardWasVisible;
 
         try {
             Main.panel._updatePanel?.();

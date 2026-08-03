@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 40" width="60" height="40">
+  <!-- Flat rectangular Iran flag (no wave) -->
+  <rect width="60" height="13.333" y="0" fill="#239F40"/>
+  <rect width="60" height="13.333" y="13.333" fill="#FFFFFF"/>
+  <rect width="60" height="13.333" y="26.667" fill="#DA0000"/>
+  <!-- Simplified national emblem (flat) -->
+  <g fill="#DA0000" transform="translate(30,20)">
+    <path d="M0,-6.2 C1.8,-6.2 3.2,-4.2 3.2,-1.8 C3.2,1.2 1.6,3.4 0,5.8 C-1.6,3.4 -3.2,1.2 -3.2,-1.8 C-3.2,-4.2 -1.8,-6.2 0,-6.2 Z"/>
+    <rect x="-0.45" y="-7.2" width="0.9" height="13.5" rx="0.2"/>
+  </g>
+  <!-- Takbir script stylized as flat Kufic bars (simplified, non-wavy) -->
+  <g fill="#FFFFFF">
+    <rect x="2" y="2" width="1.2" height="9.5"/>
+    <rect x="4.2" y="2" width="1.2" height="9.5"/>
+    <rect x="56.8" y="2" width="1.2" height="9.5"/>
+    <rect x="54.6" y="2" width="1.2" height="9.5"/>
+    <rect x="2" y="28.5" width="1.2" height="9.5"/>
+    <rect x="4.2" y="28.5" width="1.2" height="9.5"/>
+    <rect x="56.8" y="28.5" width="1.2" height="9.5"/>
+    <rect x="54.6" y="28.5" width="1.2" height="9.5"/>
+  </g>
+</svg>

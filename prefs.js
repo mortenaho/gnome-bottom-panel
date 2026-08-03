@@ -107,6 +107,37 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
             _('System indicators'),
             _('Quick Settings: Wi-Fi, Bluetooth, volume, brightness, battery, power')));
 
+        const keyboardGroup = new Adw.PreferencesGroup({
+            title: _('Keyboard layout'),
+            description: _('Flag uses a rectangular country badge'),
+        });
+        page.add(keyboardGroup);
+
+        keyboardGroup.add(this._switchRow(settings, 'show-keyboard-layout',
+            _('Show keyboard layout'),
+            _('Uses flat rectangular SVG flags (not emoji)')));
+
+        const kbMode = new Adw.ComboRow({
+            title: _('Display mode'),
+            subtitle: _('Character (en/fa), flat flag, or both — flags are 3:2 rectangles'),
+            model: new Gtk.StringList({
+                strings: [_('Character'), _('Flag'), _('Both')],
+            }),
+        });
+        const modeMap = ['character', 'flag', 'both'];
+        const applyKbMode = () => {
+            const value = settings.get_string('keyboard-display-mode');
+            const idx = modeMap.indexOf(value);
+            kbMode.selected = idx >= 0 ? idx : 2;
+        };
+        applyKbMode();
+        kbMode.connect('notify::selected', () => {
+            settings.set_string('keyboard-display-mode',
+                modeMap[kbMode.selected] ?? 'both');
+        });
+        settings.connect('changed::keyboard-display-mode', applyKbMode);
+        keyboardGroup.add(kbMode);
+
         const clockGroup = new Adw.PreferencesGroup({
             title: _('Clock'),
         });
@@ -129,6 +160,98 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
         });
         settings.connect('changed::clock-position', applyClock);
         clockGroup.add(clockPos);
+
+        const clockStyle = new Adw.ComboRow({
+            title: _('Clock style'),
+            subtitle: _('Native GNOME clock or seven-segment LED face'),
+            model: new Gtk.StringList({
+                strings: [_('Default'), _('Seven-segment')],
+            }),
+        });
+        const styleMap = ['default', 'seven-segment'];
+        const applyStyle = () => {
+            const value = settings.get_string('clock-style');
+            const idx = styleMap.indexOf(value);
+            clockStyle.selected = idx >= 0 ? idx : 0;
+            const seven = settings.get_string('clock-style') === 'seven-segment';
+            clockFormat.sensitive = seven;
+            clockHour.sensitive = seven;
+            clockLed.sensitive = seven;
+            clockBlink.sensitive = seven;
+        };
+        clockStyle.connect('notify::selected', () => {
+            settings.set_string('clock-style',
+                styleMap[clockStyle.selected] ?? 'default');
+        });
+        settings.connect('changed::clock-style', applyStyle);
+        clockGroup.add(clockStyle);
+
+        const clockFormat = new Adw.ComboRow({
+            title: _('Time format'),
+            subtitle: _('Hours and minutes, or include seconds'),
+            model: new Gtk.StringList({
+                strings: [_('Hours:Minutes'), _('Hours:Minutes:Seconds')],
+            }),
+        });
+        const formatMap = ['hm', 'hms'];
+        const applyFormat = () => {
+            const value = settings.get_string('clock-format');
+            const idx = formatMap.indexOf(value);
+            clockFormat.selected = idx >= 0 ? idx : 0;
+        };
+        applyFormat();
+        clockFormat.connect('notify::selected', () => {
+            settings.set_string('clock-format',
+                formatMap[clockFormat.selected] ?? 'hm');
+        });
+        settings.connect('changed::clock-format', applyFormat);
+        clockGroup.add(clockFormat);
+
+        const clockHour = new Adw.ComboRow({
+            title: _('Hour format'),
+            model: new Gtk.StringList({
+                strings: [_('24-hour'), _('12-hour')],
+            }),
+        });
+        const hourMap = ['24', '12'];
+        const applyHour = () => {
+            const value = settings.get_string('clock-hour-format');
+            clockHour.selected = value === '12' ? 1 : 0;
+        };
+        applyHour();
+        clockHour.connect('notify::selected', () => {
+            settings.set_string('clock-hour-format',
+                hourMap[clockHour.selected] ?? '24');
+        });
+        settings.connect('changed::clock-hour-format', applyHour);
+        clockGroup.add(clockHour);
+
+        const clockLed = new Adw.ComboRow({
+            title: _('LED color'),
+            model: new Gtk.StringList({
+                strings: [_('Red'), _('Green'), _('Blue'), _('Amber')],
+            }),
+        });
+        const ledMap = ['red', 'green', 'blue', 'amber'];
+        const applyLed = () => {
+            const value = settings.get_string('clock-led-color');
+            const idx = ledMap.indexOf(value);
+            clockLed.selected = idx >= 0 ? idx : 0;
+        };
+        applyLed();
+        clockLed.connect('notify::selected', () => {
+            settings.set_string('clock-led-color',
+                ledMap[clockLed.selected] ?? 'red');
+        });
+        settings.connect('changed::clock-led-color', applyLed);
+        clockGroup.add(clockLed);
+
+        const clockBlink = this._switchRow(settings, 'clock-colon-blink',
+            _('Blinking colon'),
+            _('Pulse the colon separators on the seven-segment clock'));
+        clockGroup.add(clockBlink);
+
+        applyStyle();
 
         const monitors = new Adw.PreferencesGroup({
             title: _('Monitors'),

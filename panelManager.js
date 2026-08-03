@@ -11,6 +11,18 @@ import {BottomPanel} from './panel.js';
 import {ChromeController} from './utils/chrome.js';
 import {getPanelOptions, onSettingsChanged} from './utils/settings.js';
 
+/** @type {string} */
+let _extensionPath = '';
+
+/**
+ * Called from Extension.enable() so indicators can load bundled assets.
+ *
+ * @param {string} path
+ */
+export function setExtensionPath(path) {
+    _extensionPath = path ?? '';
+}
+
 export class PanelManager {
     constructor() {
         this._panels = new Map();
@@ -51,6 +63,11 @@ export class PanelManager {
                 'show-workspaces',
                 'show-clock',
                 'clock-position',
+                'clock-style',
+                'clock-format',
+                'clock-colon-blink',
+                'clock-led-color',
+                'clock-hour-format',
                 'show-system-indicators',
                 'multi-monitor',
                 'isolate-monitors',
@@ -58,6 +75,8 @@ export class PanelManager {
                 'hide-overview-dash',
                 'animate-startup',
                 'scroll-panel-workspaces',
+                'show-keyboard-layout',
+                'keyboard-display-mode',
             ], () => this._onSettingsChanged());
 
             this._enabled = true;
@@ -91,7 +110,10 @@ export class PanelManager {
     }
 
     _createPanels() {
-        const options = getPanelOptions();
+        const options = {
+            ...getPanelOptions(),
+            extensionPath: _extensionPath,
+        };
         const monitors = Main.layoutManager.monitors;
         const primaryIndex = Main.layoutManager.primaryIndex;
 

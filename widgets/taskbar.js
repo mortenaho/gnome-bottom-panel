@@ -216,10 +216,10 @@ class Taskbar extends St.BoxLayout {
         super._init({
             style_class: 'bottom-panel-taskbar',
             reactive: true,
-            x_expand: true,
+            x_expand: false,
             y_expand: true,
             y_align: Clutter.ActorAlign.CENTER,
-            x_align: Clutter.ActorAlign.START,
+            x_align: Clutter.ActorAlign.CENTER,
         });
 
         this._params = params;

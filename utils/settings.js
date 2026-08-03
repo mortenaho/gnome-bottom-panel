@@ -57,28 +57,7 @@ export function onSettingsChanged(keys, callback) {
 /**
  * Snapshot of visual / layout settings used by BottomPanel.
  *
- * @returns {{
- *   panelHeight: number,
- *   iconSize: number,
- *   panelSpacing: number,
- *   panelMargin: number,
- *   borderRadius: number,
- *   panelOpacity: number,
- *   enableBlur: boolean,
- *   showFavorites: boolean,
- *   showRunningApps: boolean,
- *   showShowAppsButton: boolean,
- *   showWorkspaces: boolean,
- *   showClock: boolean,
- *   clockPosition: string,
- *   showSystemIndicators: boolean,
- *   multiMonitor: boolean,
- *   isolateMonitors: boolean,
- *   isolateWorkspaces: boolean,
- *   hideOverviewDash: boolean,
- *   animateStartup: boolean,
- *   scrollPanelWorkspaces: boolean,
- * }}
+ * @returns {object}
  */
 export function getPanelOptions() {
     const s = getSettings();
@@ -96,6 +75,11 @@ export function getPanelOptions() {
         showWorkspaces: s.get_boolean('show-workspaces'),
         showClock: s.get_boolean('show-clock'),
         clockPosition: s.get_string('clock-position'),
+        clockStyle: s.get_string('clock-style'),
+        clockFormat: s.get_string('clock-format'),
+        clockColonBlink: s.get_boolean('clock-colon-blink'),
+        clockLedColor: s.get_string('clock-led-color'),
+        clockHourFormat: s.get_string('clock-hour-format'),
         showSystemIndicators: s.get_boolean('show-system-indicators'),
         multiMonitor: s.get_boolean('multi-monitor'),
         isolateMonitors: s.get_boolean('isolate-monitors'),
@@ -103,5 +87,7 @@ export function getPanelOptions() {
         hideOverviewDash: s.get_boolean('hide-overview-dash'),
         animateStartup: s.get_boolean('animate-startup'),
         scrollPanelWorkspaces: s.get_boolean('scroll-panel-workspaces'),
+        showKeyboardLayout: s.get_boolean('show-keyboard-layout'),
+        keyboardDisplayMode: s.get_string('keyboard-display-mode'),
     };
 }

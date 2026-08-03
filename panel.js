@@ -1,12 +1,11 @@
 /**
- * panel.js — BottomPanel actor for a single monitor.
+ * panel.js — BottomPanel actor for a single monitor (Windows 11-inspired layout).
  *
- * Layout (left → right):
- *   [ Workspaces? ] [ Taskbar (favorites + running) ] … [ Clock? ] … [ System tray ]
+ * Layout:
+ *   [ left: workspaces? ] [ center: Start + taskbar ] [ right: clock? + tray + keyboard ]
  *
- * The panel is registered with Main.layoutManager.addChrome so Mutter reserves
- * a bottom strut (windows maximize above it). Geometry respects HiDPI via
- * St.ThemeContext / monitor scale.
+ * The taskbar cluster is centered like Windows 11. System indicators stay on
+ * the primary monitor only.
  */
 
 import Clutter from 'gi://Clutter';
@@ -20,7 +19,10 @@ import {
     SystemTrayManager,
     SecondaryClock,
 } from './indicators/systemTray.js';
+import {SevenSegmentClock} from './indicators/sevenSegmentClock.js';
+import {KeyboardLayoutIndicator} from './indicators/keyboardLayout.js';
 import {Taskbar} from './widgets/taskbar.js';
+import {StartButton} from './widgets/startButton.js';
 import {
     applyThemeClasses,
     applyBlurEffect,
@@ -41,7 +43,7 @@ class BottomPanel extends St.Widget {
     _init({monitorIndex, isPrimary, options}) {
         super._init({
             name: `bottom-panel-monitor-${monitorIndex}`,
-            style_class: 'bottom-panel',
+            style_class: 'bottom-panel win11-panel',
             reactive: true,
             track_hover: true,
             layout_manager: new Clutter.BinLayout(),
@@ -52,6 +54,7 @@ class BottomPanel extends St.Widget {
         this._options = {...options};
         this._blurEffect = null;
         this._systemTray = null;
+        this._keyboard = null;
         this._disposeColorWatch = null;
         this._chromeTracked = false;
 
@@ -65,24 +68,33 @@ class BottomPanel extends St.Widget {
 
         this._leftBox = new St.BoxLayout({
             style_class: 'bottom-panel-left',
-            x_expand: false,
+            x_expand: true,
             y_expand: true,
             y_align: Clutter.ActorAlign.CENTER,
+            x_align: Clutter.ActorAlign.START,
         });
         this._centerBox = new St.BoxLayout({
             style_class: 'bottom-panel-center',
-            x_expand: true,
+            x_expand: false,
             y_expand: true,
             x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,
         });
         this._rightBox = new St.BoxLayout({
             style_class: 'bottom-panel-right',
-            x_expand: false,
+            x_expand: true,
             y_expand: true,
             y_align: Clutter.ActorAlign.CENTER,
             x_align: Clutter.ActorAlign.END,
         });
+
+        // Center cluster: Start + taskbar (Win11 style)
+        this._centerCluster = new St.BoxLayout({
+            style_class: 'bottom-panel-center-cluster',
+            y_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        this._centerBox.add_child(this._centerCluster);
 
         this._shell.add_child(this._leftBox);
         this._shell.add_child(this._centerBox);
@@ -118,26 +130,43 @@ class BottomPanel extends St.Widget {
             this._leftBox.add_child(this._workspaceIndicator);
         }
 
+        if (opts.showShowAppsButton) {
+            this._startButton = new StartButton(opts.iconSize);
+            this._centerCluster.add_child(this._startButton);
+        }
+
         this._taskbar = new Taskbar({
             iconSize: opts.iconSize,
             showFavorites: opts.showFavorites,
             showRunningApps: opts.showRunningApps,
-            showShowAppsButton: opts.showShowAppsButton,
+            showShowAppsButton: false, // use StartButton instead
             monitorIndex: this.monitorIndex,
             isolateMonitors: opts.isolateMonitors,
             isolateWorkspaces: opts.isolateWorkspaces,
         });
-        this._leftBox.add_child(this._taskbar);
+        this._centerCluster.add_child(this._taskbar);
+
+        // Clock target: Win11 puts clock on the right by default.
+        const clockBox = opts.clockPosition === 'center'
+            ? this._centerBox
+            : this._rightBox;
 
         if (this.isPrimary) {
+            if (opts.showClock && opts.clockStyle === 'seven-segment') {
+                this._sevenSegClock = this._createSevenSegmentClock();
+                clockBox.add_child(this._sevenSegClock);
+            }
+
             try {
                 this._systemTray = new SystemTrayManager(
                     this._rightBox,
-                    this._centerBox,
+                    clockBox,
                     {
                         showClock: opts.showClock,
                         clockPosition: opts.clockPosition,
+                        clockStyle: opts.clockStyle,
                         showSystemIndicators: opts.showSystemIndicators,
+                        showKeyboardLayout: opts.showKeyboardLayout,
                     });
                 this._systemTray.enable();
             } catch (e) {
@@ -145,17 +174,41 @@ class BottomPanel extends St.Widget {
                 this._systemTray?.destroy();
                 this._systemTray = null;
             }
+
+            // Custom keyboard (flag / char / both) instead of stock label.
+            if (opts.showKeyboardLayout) {
+                this._keyboard = new KeyboardLayoutIndicator(
+                    opts.keyboardDisplayMode,
+                    opts.extensionPath ?? '');
+                this._rightBox.add_child(this._keyboard.container);
+            }
         } else if (opts.showClock) {
-            this._secondaryClock = new SecondaryClock();
-            if (opts.clockPosition === 'center')
-                this._centerBox.add_child(this._secondaryClock);
-            else
-                this._rightBox.add_child(this._secondaryClock);
+            if (opts.clockStyle === 'seven-segment') {
+                this._sevenSegClock = this._createSevenSegmentClock();
+                clockBox.add_child(this._sevenSegClock);
+            } else {
+                this._secondaryClock = new SecondaryClock();
+                clockBox.add_child(this._secondaryClock);
+            }
         }
+    }
+
+    /**
+     * @returns {SevenSegmentClock}
+     */
+    _createSevenSegmentClock() {
+        const opts = this._options;
+        return new SevenSegmentClock({
+            format: opts.clockFormat,
+            colonBlink: opts.clockColonBlink,
+            ledColor: opts.clockLedColor,
+            hourFormat: opts.clockHourFormat,
+        });
     }
 
     _applyVisuals() {
         applyThemeClasses(this);
+        this.add_style_class_name('win11-panel');
         const style = buildPanelInlineStyle(this._options);
         this._shell.set_style(style);
 
@@ -164,9 +217,6 @@ class BottomPanel extends St.Widget {
             this._options.enableBlur);
     }
 
-    /**
-     * Place the panel along the bottom edge of its monitor with optional margin.
-     */
     _positionOnMonitor() {
         const monitor = Main.layoutManager.monitors[this.monitorIndex];
         if (!monitor)
@@ -177,6 +227,7 @@ class BottomPanel extends St.Widget {
         const height = scaleForMonitor(
             this._options.panelHeight, this.monitorIndex);
 
+        // Win11-like: full-bleed when margin is 0, floating when > 0.
         const width = Math.max(0, monitor.width - 2 * margin);
         const x = monitor.x + margin;
         const y = monitor.y + monitor.height - height - margin;
@@ -185,15 +236,10 @@ class BottomPanel extends St.Widget {
         this.set_size(width, height);
     }
 
-    /**
-     * Register with the layout manager so maximized windows avoid the panel.
-     */
     _trackChrome() {
         if (this._chromeTracked)
             return;
 
-        // affectsStruts: reserve work-area space.
-        // trackFullscreen: auto-hide when a fullscreen window is focused.
         Main.layoutManager.addChrome(this, {
             affectsStruts: true,
             trackFullscreen: true,
@@ -214,15 +260,14 @@ class BottomPanel extends St.Widget {
         this.ease({
             opacity: 255,
             translation_y: 0,
-            duration: 320,
+            duration: 280,
             mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
         });
     }
 
     /**
-     * Apply updated settings without recreating the whole panel when possible.
-     *
      * @param {object} options
+     * @returns {boolean} whether a full rebuild is needed
      */
     updateOptions(options) {
         const prev = this._options;
@@ -232,20 +277,39 @@ class BottomPanel extends St.Widget {
             iconSize: options.iconSize,
             showFavorites: options.showFavorites,
             showRunningApps: options.showRunningApps,
-            showShowAppsButton: options.showShowAppsButton,
+            showShowAppsButton: false,
             isolateMonitors: options.isolateMonitors,
             isolateWorkspaces: options.isolateWorkspaces,
         });
 
+        this._startButton?.setIconSize?.(options.iconSize);
+        this._keyboard?.setDisplayMode?.(options.keyboardDisplayMode);
+
+        if (this._sevenSegClock) {
+            this._sevenSegClock.setOptions({
+                format: options.clockFormat,
+                colonBlink: options.clockColonBlink,
+                ledColor: options.clockLedColor,
+                hourFormat: options.clockHourFormat,
+            });
+        }
+
+        if (this._startButton && !options.showShowAppsButton) {
+            this._startButton.hide();
+        } else if (this._startButton && options.showShowAppsButton) {
+            this._startButton.show();
+        }
+
         this._applyVisuals();
         this._positionOnMonitor();
 
-        // Structural changes (clock position, trays, workspaces) need rebuild
-        // by PanelManager — signal via return value.
         return prev.showWorkspaces !== options.showWorkspaces ||
             prev.showClock !== options.showClock ||
             prev.clockPosition !== options.clockPosition ||
+            prev.clockStyle !== options.clockStyle ||
             prev.showSystemIndicators !== options.showSystemIndicators ||
+            prev.showShowAppsButton !== options.showShowAppsButton ||
+            prev.showKeyboardLayout !== options.showKeyboardLayout ||
             prev.panelMargin !== options.panelMargin;
     }
 
@@ -256,6 +320,9 @@ class BottomPanel extends St.Widget {
 
         this._systemTray?.destroy();
         this._systemTray = null;
+
+        this._keyboard?.destroy();
+        this._keyboard = null;
 
         this._untrackChrome();
     }

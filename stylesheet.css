@@ -1,65 +1,109 @@
-/* stylesheet.css — Bottom Panel visuals (light / dark + chrome polish) */
+/* stylesheet.css — Windows 11-inspired bottom panel */
 
 .bottom-panel {
     background-color: transparent;
 }
 
 .bottom-panel-shell {
-    spacing: 8px;
+    spacing: 4px;
 }
 
 .bottom-panel-left,
 .bottom-panel-center,
 .bottom-panel-right {
-    spacing: 6px;
+    spacing: 4px;
 }
 
-/* —— Theme variants (classes toggled from utils/theming.js) —— */
+.bottom-panel-center-cluster {
+    spacing: 2px;
+    padding: 0 4px;
+}
+
+/* —— Theme variants —— */
 
 .bottom-panel-dark .bottom-panel-shell {
-    color: #f0f0f0;
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    color: #f3f3f3;
+    box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .bottom-panel-light .bottom-panel-shell {
-    color: #1c1c1c;
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+    color: #1a1a1a;
+    box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.08);
+}
+
+/* Mica-like acrylic wash */
+.win11-panel.bottom-panel-dark .bottom-panel-shell {
+    background-color: rgba(32, 32, 32, 0.72);
+}
+
+.win11-panel.bottom-panel-light .bottom-panel-shell {
+    background-color: rgba(243, 243, 243, 0.78);
+}
+
+/* —— Start button (Win11-like) —— */
+
+.bottom-panel-start-button {
+    border-radius: 6px;
+    padding: 4px 8px;
+    margin: 0 4px;
+    transition-duration: 120ms;
+}
+
+.bottom-panel-start-button:hover {
+    background-color: rgba(128, 128, 128, 0.22);
+}
+
+.bottom-panel-start-button:active,
+.bottom-panel-start-button:checked {
+    background-color: rgba(0, 120, 212, 0.35);
+}
+
+.bottom-panel-dark .bottom-panel-start-button:hover {
+    background-color: rgba(255, 255, 255, 0.10);
+}
+
+.bottom-panel-light .bottom-panel-start-button:hover {
+    background-color: rgba(0, 0, 0, 0.08);
+}
+
+.bottom-panel-start-icon {
+    icon-size: 22px;
 }
 
 /* —— Taskbar / Dash —— */
 
 .bottom-panel-dash,
 .bottom-panel-taskbar {
-    spacing: 2px;
+    spacing: 0;
     background: transparent;
 }
 
 .bottom-panel-app-icon {
-    border-radius: 10px;
-    padding: 2px;
-    transition-duration: 120ms;
+    border-radius: 6px;
+    padding: 4px 6px;
+    transition-duration: 100ms;
 }
 
 .bottom-panel-app-icon:hover {
-    background-color: rgba(128, 128, 128, 0.22);
+    background-color: rgba(128, 128, 128, 0.20);
 }
 
 .bottom-panel-app-icon:active,
 .bottom-panel-app-icon:checked {
-    background-color: rgba(128, 128, 128, 0.32);
+    background-color: rgba(128, 128, 128, 0.28);
 }
 
 .bottom-panel-dark .bottom-panel-app-icon:hover {
-    background-color: rgba(255, 255, 255, 0.10);
+    background-color: rgba(255, 255, 255, 0.08);
 }
 
 .bottom-panel-light .bottom-panel-app-icon:hover {
-    background-color: rgba(0, 0, 0, 0.08);
+    background-color: rgba(0, 0, 0, 0.06);
 }
 
-/* Running-dot inherited from Dash; tint slightly for contrast */
+/* Running indicator underline (Win11-ish) */
 .bottom-panel-app-icon .dash-item-container .overview-icon {
-    border-radius: 10px;
+    border-radius: 6px;
 }
 
 /* —— Workspace dots —— */
@@ -86,26 +130,210 @@
     background-color: #333333;
 }
 
-/* —— Clock (secondary monitors) —— */
+/* —— Clock —— */
 
 .bottom-panel-clock {
-    border-radius: 10px;
+    border-radius: 6px;
     padding: 0 10px;
 }
 
 .bottom-panel-clock:hover {
-    background-color: rgba(128, 128, 128, 0.2);
+    background-color: rgba(128, 128, 128, 0.18);
 }
 
 .bottom-panel-clock-label {
-    font-weight: 600;
-    font-size: 0.95em;
+    font-weight: 500;
+    font-size: 0.92em;
 }
 
-/* —— Native indicators inside the bottom panel —— */
+/* —— Seven-segment clock —— */
+
+.bottom-panel-seven-seg {
+    padding: 2px 8px;
+}
+
+.seven-seg-row {
+    spacing: 3px;
+}
+
+.seven-seg-digit {
+    spacing: 1px;
+    width: 14px;
+    height: 26px;
+}
+
+.seven-seg-row-h {
+    spacing: 0;
+}
+
+.seven-seg-row-v {
+    spacing: 0;
+    height: 7px;
+}
+
+.seven-seg-gap {
+    width: 4px;
+    min-width: 4px;
+}
+
+.seven-seg-seg {
+    background-color: rgba(128, 128, 128, 0.18);
+    border-radius: 1px;
+}
+
+.seven-seg-a,
+.seven-seg-g,
+.seven-seg-d {
+    width: 10px;
+    height: 2px;
+}
+
+.seven-seg-b,
+.seven-seg-c,
+.seven-seg-e,
+.seven-seg-f {
+    width: 2px;
+    height: 7px;
+}
+
+.seven-seg-colon {
+    spacing: 0;
+    padding: 0 2px;
+    width: 6px;
+}
+
+.seven-seg-colon-dot {
+    width: 3px;
+    height: 3px;
+    border-radius: 2px;
+    background-color: rgba(128, 128, 128, 0.18);
+}
+
+.seven-seg-colon-spacer {
+    height: 6px;
+}
+
+.seven-seg-colon.colon-off .seven-seg-colon-dot {
+    background-color: transparent;
+}
+
+.seven-seg-ampm {
+    font-size: 0.65em;
+    font-weight: 700;
+    padding-left: 4px;
+    padding-bottom: 1px;
+}
+
+/* LED on colors */
+.bottom-panel-seven-seg.led-red .seven-seg-seg.on {
+    background-color: #ff3b30;
+    box-shadow: 0 0 4px rgba(255, 59, 48, 0.55);
+}
+
+.bottom-panel-seven-seg.led-red .seven-seg-colon .seven-seg-colon-dot {
+    background-color: #ff3b30;
+    box-shadow: 0 0 3px rgba(255, 59, 48, 0.45);
+}
+
+.bottom-panel-seven-seg.led-red .seven-seg-ampm {
+    color: #ff3b30;
+}
+
+.bottom-panel-seven-seg.led-green .seven-seg-seg.on {
+    background-color: #34c759;
+    box-shadow: 0 0 4px rgba(52, 199, 89, 0.55);
+}
+
+.bottom-panel-seven-seg.led-green .seven-seg-colon .seven-seg-colon-dot {
+    background-color: #34c759;
+    box-shadow: 0 0 3px rgba(52, 199, 89, 0.45);
+}
+
+.bottom-panel-seven-seg.led-green .seven-seg-ampm {
+    color: #34c759;
+}
+
+.bottom-panel-seven-seg.led-blue .seven-seg-seg.on {
+    background-color: #0a84ff;
+    box-shadow: 0 0 4px rgba(10, 132, 255, 0.55);
+}
+
+.bottom-panel-seven-seg.led-blue .seven-seg-colon .seven-seg-colon-dot {
+    background-color: #0a84ff;
+    box-shadow: 0 0 3px rgba(10, 132, 255, 0.45);
+}
+
+.bottom-panel-seven-seg.led-blue .seven-seg-ampm {
+    color: #0a84ff;
+}
+
+.bottom-panel-seven-seg.led-amber .seven-seg-seg.on {
+    background-color: #ff9f0a;
+    box-shadow: 0 0 4px rgba(255, 159, 10, 0.55);
+}
+
+.bottom-panel-seven-seg.led-amber .seven-seg-colon .seven-seg-colon-dot {
+    background-color: #ff9f0a;
+    box-shadow: 0 0 3px rgba(255, 159, 10, 0.45);
+}
+
+.bottom-panel-seven-seg.led-amber .seven-seg-ampm {
+    color: #ff9f0a;
+}
+
+.bottom-panel-seven-seg.led-red .seven-seg-colon.colon-off .seven-seg-colon-dot,
+.bottom-panel-seven-seg.led-green .seven-seg-colon.colon-off .seven-seg-colon-dot,
+.bottom-panel-seven-seg.led-blue .seven-seg-colon.colon-off .seven-seg-colon-dot,
+.bottom-panel-seven-seg.led-amber .seven-seg-colon.colon-off .seven-seg-colon-dot {
+    background-color: transparent;
+    box-shadow: none;
+}
+
+/* —— Keyboard layout (flat rectangular SVG flags, 3:2) —— */
+
+.bottom-panel-keyboard {
+    -natural-hpadding: 6px;
+    -minimum-hpadding: 4px;
+    border-radius: 6px;
+}
+
+.bottom-panel-keyboard-box {
+    spacing: 6px;
+}
+
+.bottom-panel-kb-menu-row {
+    spacing: 8px;
+    padding: 2px 0;
+}
+
+/* Strict rectangle — no rounded “waving” flag look */
+.bottom-panel-kb-flag-rect {
+    width: 22px;
+    height: 15px;
+    border-radius: 0;
+    overflow: hidden;
+    border: 1px solid rgba(128, 128, 128, 0.45);
+    background-color: transparent;
+}
+
+.bottom-panel-kb-flag-icon {
+    width: 22px;
+    height: 15px;
+    padding: 0;
+    margin: 0;
+}
+
+.bottom-panel-kb-char {
+    font-weight: 600;
+    font-size: 0.85em;
+    text-transform: uppercase;
+    padding-right: 2px;
+}
+
+/* —— Native indicators —— */
 
 .bottom-panel .panel-button {
-    border-radius: 10px;
+    border-radius: 6px;
     -natural-hpadding: 8px;
     -minimum-hpadding: 4px;
 }
@@ -115,23 +343,23 @@
 .bottom-panel .panel-button:overview,
 .bottom-panel .panel-button:focus,
 .bottom-panel .panel-button:checked {
-    background-color: rgba(128, 128, 128, 0.22);
+    background-color: rgba(128, 128, 128, 0.18);
 }
 
 .bottom-panel-dark .panel-button:hover {
-    background-color: rgba(255, 255, 255, 0.10);
+    background-color: rgba(255, 255, 255, 0.08);
 }
 
 .bottom-panel-light .panel-button:hover {
-    background-color: rgba(0, 0, 0, 0.08);
+    background-color: rgba(0, 0, 0, 0.06);
 }
 
-/* Quick Settings / date menu open upward; tighten panel-menu look */
 .bottom-panel .panel-status-indicators-box {
-    spacing: 4px;
+    spacing: 2px;
 }
 
-/* Reduce oversized top-bar padding that looks odd on a floating dock */
-.bottom-panel #panelClock {
-    font-weight: 600;
+.bottom-panel #panelClock,
+.bottom-panel .clock {
+    font-weight: 500;
+    font-size: 0.92em;
 }

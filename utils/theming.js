@@ -96,16 +96,17 @@ export function buildPanelInlineStyle(options) {
     const dark = isDarkTheme();
     const bg = dark
         ? `rgba(32, 32, 32, ${options.panelOpacity})`
-        : `rgba(245, 245, 245, ${options.panelOpacity})`;
+        : `rgba(243, 243, 243, ${options.panelOpacity})`;
     const border = dark
-        ? 'rgba(255, 255, 255, 0.08)'
+        ? 'rgba(255, 255, 255, 0.06)'
         : 'rgba(0, 0, 0, 0.08)';
 
+    const radius = options.borderRadius;
     return [
         `height: ${options.panelHeight}px;`,
-        `border-radius: ${options.borderRadius}px;`,
+        `border-radius: ${radius}px;`,
         `background-color: ${bg};`,
-        `border: 1px solid ${border};`,
+        radius > 0 ? `border: 1px solid ${border};` : `border-top: 1px solid ${border};`,
         `padding-left: ${options.panelSpacing}px;`,
         `padding-right: ${options.panelSpacing}px;`,
     ].join(' ');
@@ -124,7 +125,6 @@ export function buildPanelInlineStyle(options) {
  * @returns {Shell.BlurEffect|null}
  */
 export function applyBlurEffect(actor, enabled) {
-    // Remove any previous blur effect we may have attached.
     const existing = actor.get_effect?.('bottom-panel-blur');
     if (existing)
         actor.remove_effect(existing);
@@ -132,22 +132,27 @@ export function applyBlurEffect(actor, enabled) {
     if (!enabled)
         return null;
 
-    if (!Shell.BlurEffect) {
-        console.debug('Bottom Panel: Shell.BlurEffect unavailable');
+    if (!Shell.BlurEffect)
         return null;
-    }
 
     try {
+        // GNOME 50 uses "radius" (not "sigma"). Prefer BACKGROUND for mica;
+        // fall back to ACTOR if BACKGROUND is missing.
+        const mode = (Shell.BlurMode && 'BACKGROUND' in Shell.BlurMode)
+            ? Shell.BlurMode.BACKGROUND
+            : Shell.BlurMode.ACTOR;
+
         const effect = new Shell.BlurEffect({
             name: 'bottom-panel-blur',
-            sigma: 36,
-            brightness: 0.6,
-            mode: Shell.BlurMode.ACTOR,
+            mode,
+            radius: 30,
+            brightness: 0.65,
         });
         actor.add_effect(effect);
         return effect;
     } catch (e) {
-        console.warn(`Bottom Panel: failed to create blur effect: ${e}`);
+        // Blur is optional — opacity styling still applies.
+        console.debug(`Bottom Panel: blur unavailable (${e.message})`);
         return null;
     }
 }
