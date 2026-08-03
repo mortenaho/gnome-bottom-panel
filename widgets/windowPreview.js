@@ -30,9 +30,16 @@ export class WindowPreviewMenu extends PopupMenu.PopupMenu {
         this.blockSourceEvents = true;
         this._source = source;
 
-        this.actor.add_style_class_name('app-menu');
+        // actor is the BoxPointer; box is .popup-menu-content
         this.actor.add_style_class_name('bottom-panel-window-preview-menu');
+        this.box.add_style_class_name('bottom-panel-window-preview-content');
         this.actor.hide();
+
+        // Kill stock menu chrome (opaque fill + arrow border).
+        const clearChrome = 'background-color: transparent; border: none; box-shadow: none;';
+        this.actor.set_style(clearChrome);
+        this.box.set_style(`${clearChrome} padding: 0; margin: 0;`);
+        this._boxPointer.bin?.set_style?.(clearChrome);
 
         this._mappedId = this._source.connect('notify::mapped', () => {
             if (!this._source.mapped)
@@ -78,17 +85,10 @@ class WindowPreviewList extends PopupMenu.PopupMenuSection {
         this._source = source;
         this.app = source.app;
 
-        this.actor = new St.ScrollView({
-            style_class: 'bottom-panel-window-preview-scroll',
-            hscrollbar_policy: St.PolicyType.AUTOMATIC,
-            vscrollbar_policy: St.PolicyType.NEVER,
-            overlay_scrollbars: true,
-            enable_mouse_scrolling: true,
-        });
-
+        // Plain horizontal box — no ScrollView, so no scrollbar chrome.
         this.box.vertical = false;
         this.box.style_class = 'bottom-panel-window-preview-list';
-        this.actor.set_child(this.box);
+        this.actor = this.box;
         this.actor._delegate = this;
 
         this._shownInitially = false;
