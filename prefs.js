@@ -1,8 +1,9 @@
 /**
- * prefs.js — Preferences window (Adw / GTK 4) for GNOME Shell 45+.
+ * Preferences window (Adw / GTK 4).
  */
 
 import Adw from 'gi://Adw';
+import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk';
 
@@ -37,7 +38,7 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
 
         const group = new Adw.PreferencesGroup({
             title: _('Panel look'),
-            description: _('Size, corners, opacity, and blur'),
+            description: _('Size, corners, color, opacity, and blur'),
         });
         page.add(group);
 
@@ -47,6 +48,9 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
         group.add(this._spinRow(settings, 'icon-size', _('Icon size'),
             _('Application icon size in the taskbar'),
             16, 64, 1));
+        group.add(this._spinRow(settings, 'tray-icon-size', _('Tray icon size'),
+            _('System indicators and keyboard icon size on the right'),
+            12, 48, 1));
         group.add(this._spinRow(settings, 'panel-margin', _('Margin'),
             _('Gap from screen edges (floating dock when > 0)'),
             0, 24, 1));
@@ -55,6 +59,45 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
         group.add(this._spinRow(settings, 'panel-spacing', _('Spacing'),
             _('Padding inside the panel'),
             0, 32, 1));
+
+        group.add(this._switchRow(settings, 'use-custom-panel-color',
+            _('Custom panel color'),
+            _('Override the light/dark theme background with a chosen color')));
+
+        const colorRow = new Adw.ActionRow({
+            title: _('Panel color'),
+            subtitle: _('Dock background; opacity is set separately below'),
+        });
+        const colorButton = new Gtk.ColorDialogButton({
+            dialog: new Gtk.ColorDialog({
+                title: _('Panel color'),
+                with_alpha: false,
+            }),
+            valign: Gtk.Align.CENTER,
+        });
+        colorRow.add_suffix(colorButton);
+        colorRow.activatable_widget = colorButton;
+
+        const applyColorButton = () => {
+            const rgba = new Gdk.RGBA();
+            if (!rgba.parse(settings.get_string('panel-color')))
+                rgba.parse('#202020');
+            colorButton.set_rgba(rgba);
+        };
+        applyColorButton();
+
+        colorButton.connect('notify::rgba', () => {
+            const rgba = colorButton.get_rgba();
+            const toHex = c => Math.round(c * 255)
+                .toString(16).padStart(2, '0');
+            settings.set_string('panel-color',
+                `#${toHex(rgba.red)}${toHex(rgba.green)}${toHex(rgba.blue)}`);
+        });
+        settings.connect('changed::panel-color', applyColorButton);
+
+        settings.bind('use-custom-panel-color', colorRow, 'sensitive',
+            Gio.SettingsBindFlags.DEFAULT);
+        group.add(colorRow);
 
         const opacity = new Adw.SpinRow({
             title: _('Opacity'),
@@ -107,6 +150,39 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
             _('System indicators'),
             _('Quick Settings: Wi-Fi, Bluetooth, volume, brightness, battery, power')));
 
+        page.add(this._buildItemOrderGroup(settings));
+
+        const keyboardGroup = new Adw.PreferencesGroup({
+            title: _('Keyboard layout'),
+            description: _('Flag uses a rectangular country badge'),
+        });
+        page.add(keyboardGroup);
+
+        keyboardGroup.add(this._switchRow(settings, 'show-keyboard-layout',
+            _('Show keyboard layout'),
+            _('Uses flat rectangular SVG flags (not emoji)')));
+
+        const kbMode = new Adw.ComboRow({
+            title: _('Display mode'),
+            subtitle: _('Character (en/fa), flat flag, or both — flags are 3:2 rectangles'),
+            model: new Gtk.StringList({
+                strings: [_('Character'), _('Flag'), _('Both')],
+            }),
+        });
+        const modeMap = ['character', 'flag', 'both'];
+        const applyKbMode = () => {
+            const value = settings.get_string('keyboard-display-mode');
+            const idx = modeMap.indexOf(value);
+            kbMode.selected = idx >= 0 ? idx : 2;
+        };
+        applyKbMode();
+        kbMode.connect('notify::selected', () => {
+            settings.set_string('keyboard-display-mode',
+                modeMap[kbMode.selected] ?? 'both');
+        });
+        settings.connect('changed::keyboard-display-mode', applyKbMode);
+        keyboardGroup.add(kbMode);
+
         const clockGroup = new Adw.PreferencesGroup({
             title: _('Clock'),
         });
@@ -130,6 +206,135 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
         settings.connect('changed::clock-position', applyClock);
         clockGroup.add(clockPos);
 
+        const clockStyle = new Adw.ComboRow({
+            title: _('Clock style'),
+            subtitle: _('Native GNOME clock or seven-segment LED face'),
+            model: new Gtk.StringList({
+                strings: [_('Default'), _('Seven-segment')],
+            }),
+        });
+        const styleMap = ['default', 'seven-segment'];
+        const applyStyle = () => {
+            const value = settings.get_string('clock-style');
+            const idx = styleMap.indexOf(value);
+            clockStyle.selected = idx >= 0 ? idx : 0;
+            const seven = settings.get_string('clock-style') === 'seven-segment';
+            clockFormat.sensitive = seven;
+            clockHour.sensitive = seven;
+            clockLed.sensitive = seven;
+            clockThickness.sensitive = seven;
+            clockBlink.sensitive = seven;
+        };
+        clockStyle.connect('notify::selected', () => {
+            settings.set_string('clock-style',
+                styleMap[clockStyle.selected] ?? 'default');
+        });
+        settings.connect('changed::clock-style', applyStyle);
+        clockGroup.add(clockStyle);
+
+        const clockFormat = new Adw.ComboRow({
+            title: _('Time format'),
+            subtitle: _('Hours and minutes, or include seconds'),
+            model: new Gtk.StringList({
+                strings: [_('Hours:Minutes'), _('Hours:Minutes:Seconds')],
+            }),
+        });
+        const formatMap = ['hm', 'hms'];
+        const applyFormat = () => {
+            const value = settings.get_string('clock-format');
+            const idx = formatMap.indexOf(value);
+            clockFormat.selected = idx >= 0 ? idx : 0;
+        };
+        applyFormat();
+        clockFormat.connect('notify::selected', () => {
+            settings.set_string('clock-format',
+                formatMap[clockFormat.selected] ?? 'hm');
+        });
+        settings.connect('changed::clock-format', applyFormat);
+        clockGroup.add(clockFormat);
+
+        const clockHour = new Adw.ComboRow({
+            title: _('Hour format'),
+            model: new Gtk.StringList({
+                strings: [_('24-hour'), _('12-hour')],
+            }),
+        });
+        const hourMap = ['24', '12'];
+        const applyHour = () => {
+            const value = settings.get_string('clock-hour-format');
+            clockHour.selected = value === '12' ? 1 : 0;
+        };
+        applyHour();
+        clockHour.connect('notify::selected', () => {
+            settings.set_string('clock-hour-format',
+                hourMap[clockHour.selected] ?? '24');
+        });
+        settings.connect('changed::clock-hour-format', applyHour);
+        clockGroup.add(clockHour);
+
+        const clockLed = new Adw.ActionRow({
+            title: _('LED color'),
+            subtitle: _('Any color, including white'),
+        });
+        const colorBtn = new Gtk.ColorDialogButton({
+            valign: Gtk.Align.CENTER,
+            dialog: new Gtk.ColorDialog({
+                title: _('LED color'),
+                with_alpha: false,
+            }),
+        });
+
+        const parseLed = value => {
+            const presets = {
+                red: '#ff3b30',
+                green: '#34c759',
+                blue: '#0a84ff',
+                amber: '#ff9f0a',
+                white: '#ffffff',
+            };
+            let hex = String(value || '').trim().toLowerCase();
+            if (presets[hex])
+                hex = presets[hex];
+            if (!/^#[0-9a-f]{6}$/.test(hex))
+                hex = '#ff3b30';
+            const rgba = new Gdk.RGBA();
+            rgba.parse(hex);
+            return rgba;
+        };
+        const rgbaToHex = rgba => {
+            const ch = v => Math.round(v * 255).toString(16).padStart(2, '0');
+            return `#${ch(rgba.red)}${ch(rgba.green)}${ch(rgba.blue)}`;
+        };
+
+        colorBtn.rgba = parseLed(settings.get_string('clock-led-color'));
+        let ledSync = false;
+        colorBtn.connect('notify::rgba', () => {
+            if (ledSync)
+                return;
+            settings.set_string('clock-led-color', rgbaToHex(colorBtn.rgba));
+        });
+        settings.connect('changed::clock-led-color', () => {
+            ledSync = true;
+            colorBtn.rgba = parseLed(settings.get_string('clock-led-color'));
+            ledSync = false;
+        });
+        clockLed.add_suffix(colorBtn);
+        clockLed.activatable_widget = colorBtn;
+        clockGroup.add(clockLed);
+
+        const clockThickness = this._spinRow(settings, 'clock-segment-thickness',
+            _('Segment thickness'),
+            _('Width of the lit seven-segment bars'),
+            1, 8, 1);
+        clockGroup.add(clockThickness);
+
+        const clockBlink = this._switchRow(settings, 'clock-colon-blink',
+            _('Blinking colon'),
+            _('Pulse the colon separators on the seven-segment clock'));
+        clockGroup.add(clockBlink);
+
+        applyStyle();
+
         const monitors = new Adw.PreferencesGroup({
             title: _('Monitors'),
         });
@@ -139,6 +344,110 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
             _('System indicators remain on the primary monitor only')));
 
         return page;
+    }
+
+    /**
+     * Reorderable right-side items (clock / system / keyboard).
+     *
+     * @param {Gio.Settings} settings
+     * @returns {Adw.PreferencesGroup}
+     */
+    _buildItemOrderGroup(settings) {
+        const DEFAULT = ['clock', 'system', 'keyboard'];
+        const LABELS = {
+            clock: _('Clock'),
+            system: _('System indicators'),
+            keyboard: _('Keyboard layout'),
+        };
+
+        const group = new Adw.PreferencesGroup({
+            title: _('Item order'),
+            description: _('Order of items on the right side of the panel'),
+        });
+
+        const rows = new Map();
+
+        const normalize = order => {
+            const known = new Set(DEFAULT);
+            const seen = new Set();
+            const result = [];
+            for (const id of order ?? []) {
+                if (!known.has(id) || seen.has(id))
+                    continue;
+                seen.add(id);
+                result.push(id);
+            }
+            for (const id of DEFAULT) {
+                if (!seen.has(id))
+                    result.push(id);
+            }
+            return result;
+        };
+
+        const readOrder = () =>
+            normalize(settings.get_strv('panel-item-order'));
+
+        const writeOrder = order => {
+            settings.set_strv('panel-item-order', order);
+        };
+
+        const move = (id, delta) => {
+            const order = readOrder();
+            const idx = order.indexOf(id);
+            const next = idx + delta;
+            if (idx < 0 || next < 0 || next >= order.length)
+                return;
+            [order[idx], order[next]] = [order[next], order[idx]];
+            writeOrder(order);
+        };
+
+        const rebuild = () => {
+            for (const row of rows.values())
+                group.remove(row);
+            rows.clear();
+
+            const order = readOrder();
+            order.forEach((id, index) => {
+                const row = new Adw.ActionRow({
+                    title: LABELS[id] ?? id,
+                });
+
+                const up = new Gtk.Button({
+                    icon_name: 'go-up-symbolic',
+                    valign: Gtk.Align.CENTER,
+                    tooltip_text: _('Move up'),
+                    sensitive: index > 0,
+                });
+                up.add_css_class('flat');
+                up.connect('clicked', () => move(id, -1));
+
+                const down = new Gtk.Button({
+                    icon_name: 'go-down-symbolic',
+                    valign: Gtk.Align.CENTER,
+                    tooltip_text: _('Move down'),
+                    sensitive: index < order.length - 1,
+                });
+                down.add_css_class('flat');
+                down.connect('clicked', () => move(id, 1));
+
+                const box = new Gtk.Box({
+                    orientation: Gtk.Orientation.HORIZONTAL,
+                    spacing: 4,
+                    valign: Gtk.Align.CENTER,
+                });
+                box.append(up);
+                box.append(down);
+                row.add_suffix(box);
+                row.set_activatable(false);
+
+                group.add(row);
+                rows.set(id, row);
+            });
+        };
+
+        rebuild();
+        settings.connect('changed::panel-item-order', rebuild);
+        return group;
     }
 
     /**

@@ -1,6 +1,5 @@
 /**
- * panelManager.js — Creates, updates, and destroys BottomPanel instances for
- * each monitor. Owns the ChromeController that hides the stock top panel.
+ * Create and manage BottomPanel instances per monitor.
  */
 
 import GLib from 'gi://GLib';
@@ -10,6 +9,16 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {BottomPanel} from './panel.js';
 import {ChromeController} from './utils/chrome.js';
 import {getPanelOptions, onSettingsChanged} from './utils/settings.js';
+
+/** @type {string} */
+let _extensionPath = '';
+
+/**
+ * @param {string} path
+ */
+export function setExtensionPath(path) {
+    _extensionPath = path ?? '';
+}
 
 export class PanelManager {
     constructor() {
@@ -40,10 +49,14 @@ export class PanelManager {
             this._settingsDisposer = onSettingsChanged([
                 'panel-height',
                 'icon-size',
+                'tray-icon-size',
+                'panel-item-order',
                 'panel-spacing',
                 'panel-margin',
                 'border-radius',
                 'panel-opacity',
+                'use-custom-panel-color',
+                'panel-color',
                 'enable-blur',
                 'show-favorites',
                 'show-running-apps',
@@ -51,6 +64,12 @@ export class PanelManager {
                 'show-workspaces',
                 'show-clock',
                 'clock-position',
+                'clock-style',
+                'clock-format',
+                'clock-colon-blink',
+                'clock-led-color',
+                'clock-segment-thickness',
+                'clock-hour-format',
                 'show-system-indicators',
                 'multi-monitor',
                 'isolate-monitors',
@@ -58,12 +77,12 @@ export class PanelManager {
                 'hide-overview-dash',
                 'animate-startup',
                 'scroll-panel-workspaces',
+                'show-keyboard-layout',
+                'keyboard-display-mode',
             ], () => this._onSettingsChanged());
 
             this._enabled = true;
         } catch (e) {
-            // If setup fails after hiding the top panel, restore chrome so the
-            // user is not left without a panel/dock.
             console.error(`Bottom Panel: enable failed, restoring chrome: ${e}`);
             this.disable();
             throw e;
@@ -71,7 +90,6 @@ export class PanelManager {
     }
 
     disable() {
-        // Always attempt restore, even if enable() failed halfway.
         if (this._rebuildTimeout) {
             GLib.Source.remove(this._rebuildTimeout);
             this._rebuildTimeout = 0;
@@ -91,7 +109,10 @@ export class PanelManager {
     }
 
     _createPanels() {
-        const options = getPanelOptions();
+        const options = {
+            ...getPanelOptions(),
+            extensionPath: _extensionPath,
+        };
         const monitors = Main.layoutManager.monitors;
         const primaryIndex = Main.layoutManager.primaryIndex;
 
@@ -131,8 +152,6 @@ export class PanelManager {
     }
 
     _rebuild() {
-        // System tray must be restored before we destroy the primary panel,
-        // otherwise indicators are destroyed with it.
         for (const panel of this._panels.values()) {
             if (panel.isPrimary)
                 panel._systemTray?.disable();
@@ -150,7 +169,6 @@ export class PanelManager {
         else
             this._chrome.restoreOverviewDash();
 
-        // Monitor count / structural toggles → full rebuild.
         const desiredCount = options.multiMonitor
             ? Main.layoutManager.monitors.length
             : 1;

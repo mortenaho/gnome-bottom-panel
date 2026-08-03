@@ -1,8 +1,5 @@
 /**
- * theming.js — Light/dark adaptation and panel visual styling.
- *
- * Follows org.gnome.desktop.interface color-scheme so the bottom panel
- * tracks the same preference as the rest of GNOME Shell / libadwaita.
+ * Light/dark adaptation and panel visual styling.
  */
 
 import Gio from 'gi://Gio';
@@ -43,12 +40,49 @@ export function isDarkTheme() {
 }
 
 /**
+ * Parse #RRGGBB into RGB components, or null if invalid.
+ *
+ * @param {string} hex
+ * @returns {{r: number, g: number, b: number}|null}
+ */
+export function parseHexColor(hex) {
+    const match = /^#?([0-9a-fA-F]{6})$/.exec(String(hex ?? '').trim());
+    if (!match)
+        return null;
+    const n = parseInt(match[1], 16);
+    return {
+        r: (n >> 16) & 255,
+        g: (n >> 8) & 255,
+        b: n & 255,
+    };
+}
+
+/**
+ * Relative luminance heuristic for choosing light vs dark chrome (text/icons).
+ *
+ * @param {string} hex
+ * @returns {boolean}
+ */
+export function isHexColorDark(hex) {
+    const rgb = parseHexColor(hex);
+    if (!rgb)
+        return isDarkTheme();
+    // Rec. 709 luma
+    const luma = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
+    return luma < 0.5;
+}
+
+/**
  * Apply light/dark style classes on a panel actor.
+ * When a custom panel color is active, chrome contrast follows that color.
  *
  * @param {St.Widget} actor
+ * @param {{useCustomPanelColor?: boolean, panelColor?: string}} [options]
  */
-export function applyThemeClasses(actor) {
-    const dark = isDarkTheme();
+export function applyThemeClasses(actor, options = {}) {
+    const dark = options.useCustomPanelColor && options.panelColor
+        ? isHexColorDark(options.panelColor)
+        : isDarkTheme();
     actor.remove_style_class_name('bottom-panel-light');
     actor.remove_style_class_name('bottom-panel-dark');
     actor.add_style_class_name(dark ? 'bottom-panel-dark' : 'bottom-panel-light');
@@ -89,23 +123,38 @@ export function watchColorScheme(callback) {
  *   panelOpacity: number,
  *   panelSpacing: number,
  *   panelMargin: number,
+ *   useCustomPanelColor?: boolean,
+ *   panelColor?: string,
  * }} options
  * @returns {string}
  */
 export function buildPanelInlineStyle(options) {
-    const dark = isDarkTheme();
-    const bg = dark
-        ? `rgba(32, 32, 32, ${options.panelOpacity})`
-        : `rgba(245, 245, 245, ${options.panelOpacity})`;
+    const customRgb = options.useCustomPanelColor
+        ? parseHexColor(options.panelColor)
+        : null;
+    const dark = customRgb
+        ? isHexColorDark(options.panelColor)
+        : isDarkTheme();
+
+    let bg;
+    if (customRgb) {
+        bg = `rgba(${customRgb.r}, ${customRgb.g}, ${customRgb.b}, ${options.panelOpacity})`;
+    } else {
+        bg = dark
+            ? `rgba(32, 32, 32, ${options.panelOpacity})`
+            : `rgba(243, 243, 243, ${options.panelOpacity})`;
+    }
+
     const border = dark
-        ? 'rgba(255, 255, 255, 0.08)'
+        ? 'rgba(255, 255, 255, 0.06)'
         : 'rgba(0, 0, 0, 0.08)';
 
+    const radius = options.borderRadius;
     return [
         `height: ${options.panelHeight}px;`,
-        `border-radius: ${options.borderRadius}px;`,
+        `border-radius: ${radius}px;`,
         `background-color: ${bg};`,
-        `border: 1px solid ${border};`,
+        radius > 0 ? `border: 1px solid ${border};` : `border-top: 1px solid ${border};`,
         `padding-left: ${options.panelSpacing}px;`,
         `padding-right: ${options.panelSpacing}px;`,
     ].join(' ');
@@ -124,7 +173,6 @@ export function buildPanelInlineStyle(options) {
  * @returns {Shell.BlurEffect|null}
  */
 export function applyBlurEffect(actor, enabled) {
-    // Remove any previous blur effect we may have attached.
     const existing = actor.get_effect?.('bottom-panel-blur');
     if (existing)
         actor.remove_effect(existing);
@@ -132,22 +180,27 @@ export function applyBlurEffect(actor, enabled) {
     if (!enabled)
         return null;
 
-    if (!Shell.BlurEffect) {
-        console.debug('Bottom Panel: Shell.BlurEffect unavailable');
+    if (!Shell.BlurEffect)
         return null;
-    }
 
     try {
+        // GNOME 50 uses "radius" (not "sigma"). Prefer BACKGROUND for mica;
+        // fall back to ACTOR if BACKGROUND is missing.
+        const mode = (Shell.BlurMode && 'BACKGROUND' in Shell.BlurMode)
+            ? Shell.BlurMode.BACKGROUND
+            : Shell.BlurMode.ACTOR;
+
         const effect = new Shell.BlurEffect({
             name: 'bottom-panel-blur',
-            sigma: 36,
-            brightness: 0.6,
-            mode: Shell.BlurMode.ACTOR,
+            mode,
+            radius: 30,
+            brightness: 0.65,
         });
         actor.add_effect(effect);
         return effect;
     } catch (e) {
-        console.warn(`Bottom Panel: failed to create blur effect: ${e}`);
+        // Blur is optional — opacity styling still applies.
+        console.debug(`Bottom Panel: blur unavailable (${e.message})`);
         return null;
     }
 }

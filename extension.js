@@ -1,13 +1,5 @@
 /**
- * extension.js — Extension entry point (GNOME Shell 45+ ESM API).
- *
- * Lifecycle:
- *   enable()  → init settings, disable Ubuntu Dock if present, create panels
- *   disable() → destroy panels, restore top panel / overview dash / dock
- *
- * Hot reload:
- *   X11: Alt+F2 → r
- *   Wayland (Ubuntu default): disable/enable via gnome-extensions, or log out
+ * Extension entry point (GNOME Shell 45+ ESM).
  */
 
 import GLib from 'gi://GLib';
@@ -15,7 +7,7 @@ import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-import {PanelManager} from './panelManager.js';
+import {PanelManager, setExtensionPath} from './panelManager.js';
 import {
     initSettings,
     clearSettings,
@@ -38,14 +30,13 @@ export default class BottomPanelExtension extends Extension {
         this._enableTimeout = 0;
     }
 
-    async enable() {
-        console.debug(`Bottom Panel: enabling (${this.metadata.uuid})`);
-
+    enable() {
         const settings = this.getSettings();
         initSettings(settings);
+        setExtensionPath(this.path);
 
-        // Do NOT disable docks until the bottom panel is successfully created.
-        // Otherwise a crash during setup leaves the user with no chrome.
+        // Disable conflicting docks only after the bottom panel starts
+        // successfully, so a setup failure does not leave the session without chrome.
         this._dockRestorers = [];
 
         const start = () => {
@@ -60,7 +51,6 @@ export default class BottomPanelExtension extends Extension {
                 return GLib.SOURCE_REMOVE;
             }
 
-            // Only now disable conflicting docks.
             for (const uuid of CONFLICTING_DOCKS) {
                 const restore = disableConflictingExtension(uuid);
                 this._dockRestorers.push(restore);
@@ -68,12 +58,10 @@ export default class BottomPanelExtension extends Extension {
             return GLib.SOURCE_REMOVE;
         };
 
-        // Wait until layoutManager has monitors after login/startup.
         if (Main.layoutManager._startingUp) {
             Main.layoutManager.connectObject(
                 'startup-complete', () => {
                     Main.layoutManager.disconnectObject(this);
-                    // Defer one idle so statusArea menus are fully constructed.
                     this._enableTimeout = GLib.idle_add(
                         GLib.PRIORITY_DEFAULT_IDLE, start);
                 },
@@ -85,8 +73,6 @@ export default class BottomPanelExtension extends Extension {
     }
 
     disable() {
-        console.debug(`Bottom Panel: disabling (${this.metadata.uuid})`);
-
         if (this._enableTimeout) {
             GLib.Source.remove(this._enableTimeout);
             this._enableTimeout = 0;

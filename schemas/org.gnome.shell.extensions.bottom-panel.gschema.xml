@@ -17,6 +17,19 @@
       <range min="16" max="64"/>
     </key>
 
+    <key name="tray-icon-size" type="i">
+      <default>22</default>
+      <summary>Tray icon size</summary>
+      <description>Size of system tray / right-side icons (Quick Settings, keyboard flag, etc.), in logical pixels. The keyboard flag height matches this value.</description>
+      <range min="12" max="48"/>
+    </key>
+
+    <key name="panel-item-order" type="as">
+      <default>['clock', 'system', 'keyboard']</default>
+      <summary>Right-side item order</summary>
+      <description>Order of right-side panel items. Known ids: clock, system, keyboard.</description>
+    </key>
+
     <key name="panel-spacing" type="i">
       <default>8</default>
       <summary>Panel spacing</summary>
@@ -34,24 +47,36 @@
     </key>
 
     <key name="panel-margin" type="i">
-      <default>8</default>
+      <default>0</default>
       <summary>Panel margin</summary>
       <description>Margin between the panel and the screen edges, in logical pixels. Creates a floating dock look when greater than zero.</description>
       <range min="0" max="24"/>
     </key>
 
     <key name="border-radius" type="i">
-      <default>16</default>
+      <default>0</default>
       <summary>Border radius</summary>
       <description>Corner radius of the panel background, in logical pixels.</description>
       <range min="0" max="32"/>
     </key>
 
     <key name="panel-opacity" type="d">
-      <default>0.85</default>
+      <default>0.72</default>
       <summary>Panel opacity</summary>
       <description>Background opacity of the panel (0.0–1.0).</description>
       <range min="0.3" max="1.0"/>
+    </key>
+
+    <key name="use-custom-panel-color" type="b">
+      <default>false</default>
+      <summary>Use custom panel color</summary>
+      <description>When enabled, use panel-color instead of the light/dark theme default background.</description>
+    </key>
+
+    <key name="panel-color" type="s">
+      <default>"#202020"</default>
+      <summary>Panel background color</summary>
+      <description>Custom panel/dock background color as #RRGGBB. Opacity is controlled separately by panel-opacity.</description>
     </key>
 
     <key name="enable-blur" type="b">
@@ -79,7 +104,7 @@
     </key>
 
     <key name="show-workspaces" type="b">
-      <default>true</default>
+      <default>false</default>
       <summary>Show workspace indicator</summary>
       <description>Show a workspace indicator on the panel.</description>
     </key>
@@ -91,12 +116,61 @@
     </key>
 
     <key name="clock-position" type="s">
-      <default>"center"</default>
+      <default>"right"</default>
       <summary>Clock position</summary>
       <description>Where to place the clock on the panel: "center" or "right".</description>
       <choices>
         <choice value="center"/>
         <choice value="right"/>
+      </choices>
+    </key>
+
+    <key name="clock-style" type="s">
+      <default>"default"</default>
+      <summary>Clock style</summary>
+      <description>Clock face style: "default" (native GNOME clock) or "seven-segment".</description>
+      <choices>
+        <choice value="default"/>
+        <choice value="seven-segment"/>
+      </choices>
+    </key>
+
+    <key name="clock-format" type="s">
+      <default>"hm"</default>
+      <summary>Clock time format</summary>
+      <description>Show hours and minutes ("hm") or hours, minutes, and seconds ("hms").</description>
+      <choices>
+        <choice value="hm"/>
+        <choice value="hms"/>
+      </choices>
+    </key>
+
+    <key name="clock-colon-blink" type="b">
+      <default>true</default>
+      <summary>Blinking colon</summary>
+      <description>Blink the colon separator on the seven-segment clock.</description>
+    </key>
+
+    <key name="clock-led-color" type="s">
+      <default>"#ff3b30"</default>
+      <summary>Clock LED color</summary>
+      <description>LED color for the seven-segment clock as a hex RGB string (e.g. #ff3b30). Named presets red/green/blue/amber/white are also accepted.</description>
+    </key>
+
+    <key name="clock-segment-thickness" type="i">
+      <default>2</default>
+      <summary>Seven-segment thickness</summary>
+      <description>Thickness of lit bars on the seven-segment clock, in pixels.</description>
+      <range min="1" max="8"/>
+    </key>
+
+    <key name="clock-hour-format" type="s">
+      <default>"24"</default>
+      <summary>Clock hour format</summary>
+      <description>12-hour or 24-hour display for the seven-segment clock.</description>
+      <choices>
+        <choice value="12"/>
+        <choice value="24"/>
       </choices>
     </key>
 
@@ -140,6 +214,23 @@
       <default>true</default>
       <summary>Scroll to switch workspaces</summary>
       <description>Switch workspaces by scrolling on empty panel areas.</description>
+    </key>
+
+    <key name="show-keyboard-layout" type="b">
+      <default>true</default>
+      <summary>Show keyboard layout</summary>
+      <description>Show a keyboard layout indicator on the panel.</description>
+    </key>
+
+    <key name="keyboard-display-mode" type="s">
+      <default>"both"</default>
+      <summary>Keyboard display mode</summary>
+      <description>How to show the layout: "character" (e.g. fa), "flag" (rectangular country flag), or "both".</description>
+      <choices>
+        <choice value="character"/>
+        <choice value="flag"/>
+        <choice value="both"/>
+      </choices>
     </key>
 
   </schema>

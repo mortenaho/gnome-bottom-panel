@@ -10,6 +10,29 @@ import Gio from 'gi://Gio';
 /** @type {Gio.Settings|null} */
 let _settings = null;
 
+const LED_PRESETS = {
+    red: '#ff3b30',
+    green: '#34c759',
+    blue: '#0a84ff',
+    amber: '#ff9f0a',
+    white: '#ffffff',
+};
+
+/**
+ * @param {string} value
+ * @returns {string} `#rrggbb`
+ */
+function normalizeClockLedColor(value) {
+    const raw = String(value || '').trim().toLowerCase();
+    if (LED_PRESETS[raw])
+        return LED_PRESETS[raw];
+    if (/^#[0-9a-f]{6}$/.test(raw))
+        return raw;
+    if (/^#[0-9a-f]{3}$/.test(raw))
+        return `#${raw[1]}${raw[1]}${raw[2]}${raw[2]}${raw[3]}${raw[3]}`;
+    return LED_PRESETS.red;
+}
+
 /**
  * Initialize the module-level settings handle.
  *
@@ -57,38 +80,21 @@ export function onSettingsChanged(keys, callback) {
 /**
  * Snapshot of visual / layout settings used by BottomPanel.
  *
- * @returns {{
- *   panelHeight: number,
- *   iconSize: number,
- *   panelSpacing: number,
- *   panelMargin: number,
- *   borderRadius: number,
- *   panelOpacity: number,
- *   enableBlur: boolean,
- *   showFavorites: boolean,
- *   showRunningApps: boolean,
- *   showShowAppsButton: boolean,
- *   showWorkspaces: boolean,
- *   showClock: boolean,
- *   clockPosition: string,
- *   showSystemIndicators: boolean,
- *   multiMonitor: boolean,
- *   isolateMonitors: boolean,
- *   isolateWorkspaces: boolean,
- *   hideOverviewDash: boolean,
- *   animateStartup: boolean,
- *   scrollPanelWorkspaces: boolean,
- * }}
+ * @returns {object}
  */
 export function getPanelOptions() {
     const s = getSettings();
     return {
         panelHeight: s.get_int('panel-height'),
         iconSize: s.get_int('icon-size'),
+        trayIconSize: s.get_int('tray-icon-size'),
+        panelItemOrder: s.get_strv('panel-item-order'),
         panelSpacing: s.get_int('panel-spacing'),
         panelMargin: s.get_int('panel-margin'),
         borderRadius: s.get_int('border-radius'),
         panelOpacity: s.get_double('panel-opacity'),
+        useCustomPanelColor: s.get_boolean('use-custom-panel-color'),
+        panelColor: s.get_string('panel-color'),
         enableBlur: s.get_boolean('enable-blur'),
         showFavorites: s.get_boolean('show-favorites'),
         showRunningApps: s.get_boolean('show-running-apps'),
@@ -96,6 +102,12 @@ export function getPanelOptions() {
         showWorkspaces: s.get_boolean('show-workspaces'),
         showClock: s.get_boolean('show-clock'),
         clockPosition: s.get_string('clock-position'),
+        clockStyle: s.get_string('clock-style'),
+        clockFormat: s.get_string('clock-format'),
+        clockColonBlink: s.get_boolean('clock-colon-blink'),
+        clockLedColor: normalizeClockLedColor(s.get_string('clock-led-color')),
+        clockSegmentThickness: s.get_int('clock-segment-thickness'),
+        clockHourFormat: s.get_string('clock-hour-format'),
         showSystemIndicators: s.get_boolean('show-system-indicators'),
         multiMonitor: s.get_boolean('multi-monitor'),
         isolateMonitors: s.get_boolean('isolate-monitors'),
@@ -103,5 +115,7 @@ export function getPanelOptions() {
         hideOverviewDash: s.get_boolean('hide-overview-dash'),
         animateStartup: s.get_boolean('animate-startup'),
         scrollPanelWorkspaces: s.get_boolean('scroll-panel-workspaces'),
+        showKeyboardLayout: s.get_boolean('show-keyboard-layout'),
+        keyboardDisplayMode: s.get_string('keyboard-display-mode'),
     };
 }
