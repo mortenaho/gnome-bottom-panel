@@ -1,9 +1,14 @@
 /**
  * Keyboard layout indicator (character, flat flag, or both).
+ *
+ * Flags are scaled to the tray slot and painted into a clipped rectangle so
+ * large source PNGs can never spill outside the indicator allocation.
  */
 
 import Clutter from 'gi://Clutter';
+import GdkPixbuf from 'gi://GdkPixbuf';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 
@@ -28,13 +33,113 @@ function sourceShortLabel(source) {
 }
 
 /**
- * @param {string} path
- * @returns {string} CSS url() with file URI
+ * @returns {number}
  */
-function cssFlagBackground(path) {
-    const uri = Gio.File.new_for_path(path).get_uri();
-    // Fill the rectangle completely — no letterboxing, no border.
-    return `background-image: url("${uri}"); background-size: 100% 100%; background-repeat: no-repeat; background-position: center;`;
+function uiScaleFactor() {
+    try {
+        return St.ThemeContext.get_for_stage(global.stage).scale_factor || 1;
+    } catch (_e) {
+        return 1;
+    }
+}
+
+/**
+ * Write a device-pixel-sized flag into the user cache and return its file URI.
+ * Pre-scaling prevents St from taking the source PNG's intrinsic 800px size.
+ *
+ * @param {string} path
+ * @param {number} width — logical px
+ * @param {number} height — logical px
+ * @returns {string} file:// URI
+ */
+function scaledFlagUri(path, width, height) {
+    const scale = uiScaleFactor();
+    const pw = Math.max(1, Math.round(width * scale));
+    const ph = Math.max(1, Math.round(height * scale));
+    const cacheDir = GLib.build_filenamev([
+        GLib.get_user_cache_dir(), 'bottom-panel-flags',
+    ]);
+    GLib.mkdir_with_parents(cacheDir, 0o755);
+
+    const digest = GLib.compute_checksum_for_string(
+        GLib.ChecksumType.SHA1, `${path}|${pw}x${ph}`, -1);
+    const out = GLib.build_filenamev([cacheDir, `${digest}.png`]);
+
+    if (!GLib.file_test(out, GLib.FileTest.IS_REGULAR)) {
+        // false = stretch to fill the slot (flag rect cover; parent clips).
+        const pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, pw, ph, false);
+        pixbuf.savev(out, 'png', [], []);
+    }
+
+    return Gio.File.new_for_path(out).get_uri();
+}
+
+/**
+ * @param {string} path
+ * @param {number} width — logical px
+ * @param {number} height — logical px
+ * @returns {string}
+ */
+function cssFlagBackground(path, width, height) {
+    let uri;
+    try {
+        uri = scaledFlagUri(path, width, height);
+    } catch (_e) {
+        uri = Gio.File.new_for_path(path).get_uri();
+    }
+
+    return [
+        `width: ${width}px`,
+        `height: ${height}px`,
+        `background-image: url("${uri}")`,
+        'background-size: contain',
+        'background-repeat: no-repeat',
+        'background-position: center',
+        'background-color: transparent',
+    ].join('; ');
+}
+
+/**
+ * Fixed-size clipped flag chip. Size is locked so layout cannot grow to the
+ * source image’s intrinsic dimensions.
+ *
+ * @param {number} width
+ * @param {number} height
+ * @param {string} [style]
+ * @returns {St.Widget}
+ */
+function createFlagChip(width, height, style = '') {
+    const chip = new St.Widget({
+        style_class: 'bottom-panel-kb-flag-rect',
+        reactive: false,
+        x_expand: false,
+        y_expand: false,
+        x_align: Clutter.ActorAlign.CENTER,
+        y_align: Clutter.ActorAlign.CENTER,
+        clip_to_allocation: true,
+        width,
+        height,
+        style,
+    });
+    lockFlagChipSize(chip, width, height);
+    return chip;
+}
+
+/**
+ * @param {St.Widget} chip
+ * @param {number} width
+ * @param {number} height
+ */
+function lockFlagChipSize(chip, width, height) {
+    chip.clip_to_allocation = true;
+    chip.set({
+        width,
+        height,
+        min_width: width,
+        max_width: width,
+        min_height: height,
+        max_height: height,
+    });
 }
 
 export const KeyboardLayoutIndicator = GObject.registerClass(
@@ -57,16 +162,13 @@ class KeyboardLayoutIndicator extends PanelMenu.Button {
             style_class: 'bottom-panel-keyboard-box',
             y_align: Clutter.ActorAlign.CENTER,
             x_align: Clutter.ActorAlign.CENTER,
+            x_expand: false,
+            y_expand: false,
         });
         this.add_child(this._box);
 
-        this._flagBin = new St.Widget({
-            style_class: 'bottom-panel-kb-flag-rect',
-            y_align: Clutter.ActorAlign.CENTER,
-            x_align: Clutter.ActorAlign.CENTER,
-            reactive: false,
-        });
-        this._applyFlagGeometry();
+        const {w, h} = this._flagMetrics();
+        this._flagBin = createFlagChip(w, h);
 
         this._charLabel = new St.Label({
             style_class: 'bottom-panel-kb-char',
@@ -122,21 +224,23 @@ class KeyboardLayoutIndicator extends PanelMenu.Button {
 
     _flagMetrics() {
         const h = this._iconSize;
-        const w = Math.max(h + 4, Math.round(h * FLAG_ASPECT));
+        // Cap width so a wide aspect never exceeds ~tray allocation.
+        const w = Math.max(h + 4, Math.min(Math.round(h * FLAG_ASPECT), h * 2));
         return {w, h};
     }
 
     _applyFlagGeometry() {
         const {w, h} = this._flagMetrics();
-        this._flagBin.set_size(w, h);
+        lockFlagChipSize(this._flagBin, w, h);
     }
 
     _applyFlagImage() {
+        const {w, h} = this._flagMetrics();
         if (!this._flagPath) {
-            this._flagBin.set_style('');
+            this._flagBin.set_style(`width: ${w}px; height: ${h}px; background-color: transparent;`);
             return;
         }
-        this._flagBin.set_style(cssFlagBackground(this._flagPath));
+        this._flagBin.set_style(cssFlagBackground(this._flagPath, w, h));
     }
 
     _rebuildMenu() {
@@ -159,13 +263,7 @@ class KeyboardLayoutIndicator extends PanelMenu.Button {
                 ? flagFilePath(this._extensionPath, country)
                 : null;
             if (path) {
-                const iconBin = new St.Widget({
-                    style_class: 'bottom-panel-kb-flag-rect',
-                    width: w,
-                    height: h,
-                    style: cssFlagBackground(path),
-                });
-                row.add_child(iconBin);
+                row.add_child(createFlagChip(w, h, cssFlagBackground(path, w, h)));
             }
             row.add_child(new St.Label({
                 text: shortName,
@@ -193,6 +291,7 @@ class KeyboardLayoutIndicator extends PanelMenu.Button {
 
         this._flagPath = showFlag ? path : null;
         this._flagBin.visible = showFlag;
+        this._applyFlagGeometry();
         this._applyFlagImage();
 
         this._charLabel.visible = showChar;

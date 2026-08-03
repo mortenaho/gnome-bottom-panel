@@ -46,6 +46,7 @@ pack: schemas
 		widgets \
 		utils \
 		flags \
+		fonts \
 		schemas/*.gschema.xml \
 		-x "*~" -x "*.gschema.xml~" -x "schemas/gschemas.compiled"
 	@echo "Created $(UUID).zip"

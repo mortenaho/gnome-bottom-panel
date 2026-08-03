@@ -1,11 +1,14 @@
 /**
- * sevenSegmentClock.js — CSS seven-segment clock face for the bottom panel.
+ * sevenSegmentClock.js — Seven-segment clock using bundled DSEG7 Classic Bold.
  *
- * Click toggles the native dateMenu (calendar + notifications). Used on both
- * primary and secondary monitors when clock-style is "seven-segment".
+ * Glyphs match a modern LED look (mitred joins, rounded outer corners). Only
+ * lit segments are drawn by the font. Click toggles the native dateMenu.
+ *
+ * Font: DSEG by keshikan — SIL Open Font License 1.1 (see fonts/DSEG-LICENSE.txt).
  */
 
 import Clutter from 'gi://Clutter';
+import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
@@ -14,19 +17,8 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {setMenuOpensUpward} from './systemTray.js';
 
-/** Which segments light for digits 0–9 (a–g). */
-const DIGIT_SEGMENTS = [
-    ['a', 'b', 'c', 'd', 'e', 'f'],        // 0
-    ['b', 'c'],                           // 1
-    ['a', 'b', 'd', 'e', 'g'],             // 2
-    ['a', 'b', 'c', 'd', 'g'],             // 3
-    ['b', 'c', 'f', 'g'],                  // 4
-    ['a', 'c', 'd', 'f', 'g'],             // 5
-    ['a', 'c', 'd', 'e', 'f', 'g'],        // 6
-    ['a', 'b', 'c'],                       // 7
-    ['a', 'b', 'c', 'd', 'e', 'f', 'g'],   // 8
-    ['a', 'b', 'c', 'd', 'f', 'g'],        // 9
-];
+const FONT_FILE = 'DSEG7Classic-Bold.ttf';
+const FONT_FAMILY = 'DSEG7 Classic';
 
 const LED_PRESETS = {
     red: '#ff3b30',
@@ -34,7 +26,11 @@ const LED_PRESETS = {
     blue: '#0a84ff',
     amber: '#ff9f0a',
     white: '#ffffff',
+    cyan: '#72cedd',
 };
+
+/** @type {Promise<boolean>|null} */
+let _fontReady = null;
 
 /**
  * Normalize a stored LED color to `#rrggbb`.
@@ -58,208 +54,65 @@ export function normalizeLedColor(value) {
 }
 
 /**
- * @param {string} hex
- * @param {number} alpha
- * @returns {string}
- */
-function hexToRgba(hex, alpha) {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-/**
- * @param {string} hex
- * @returns {string}
- */
-function litSegmentStyle(hex) {
-    return `background-color: ${hex}; box-shadow: 0 0 4px ${hexToRgba(hex, 0.55)};`;
-}
-
-/**
- * @param {string} hex
- * @returns {string}
- */
-function litDotStyle(hex) {
-    return `background-color: ${hex}; box-shadow: 0 0 3px ${hexToRgba(hex, 0.45)};`;
-}
-
-/**
- * @param {string} name
- * @returns {St.Widget}
- */
-function createSegment(name) {
-    return new St.Widget({
-        style_class: `seven-seg-seg seven-seg-${name}`,
-        x_expand: false,
-        y_expand: false,
-    });
-}
-
-const HORIZONTAL_SEGS = new Set(['a', 'g', 'd']);
-
-/**
- * @param {number} thickness
- * @returns {{hLen: number, vLen: number, digitW: number, digitH: number, gap: number, dot: number}}
- */
-function geometryForThickness(thickness) {
-    const t = Math.max(1, Math.min(8, thickness | 0));
-    const hLen = Math.max(6, Math.round(5 * t));
-    const vLen = Math.max(4, Math.round(3.5 * t));
-    const gap = Math.max(2, Math.round(2 * t));
-    const digitW = hLen + 2 * t + gap;
-    const digitH = 3 * t + 2 * vLen + 4;
-    const dot = Math.max(2, t);
-    return {t, hLen, vLen, digitW, digitH, gap, dot};
-}
-
-/**
- * @param {St.BoxLayout} digit
- * @param {number} thickness
- */
-function applyDigitGeometry(digit, thickness) {
-    const g = geometryForThickness(thickness);
-    digit.set_style(`width: ${g.digitW}px; height: ${g.digitH}px;`);
-
-    for (const [name, seg] of Object.entries(digit._segments)) {
-        if (HORIZONTAL_SEGS.has(name)) {
-            seg.set_size(g.hLen, g.t);
-        } else {
-            seg.set_size(g.t, g.vLen);
-        }
-    }
-
-    for (const row of digit._vRows) {
-        row.set_style(`height: ${g.vLen}px;`);
-        for (const child of row.get_children()) {
-            if ((child.style_class || '').includes('seven-seg-gap'))
-                child.set_style(`width: ${g.gap}px; min-width: ${g.gap}px;`);
-        }
-    }
-}
-
-/**
- * @param {St.BoxLayout} colon
- * @param {number} thickness
- */
-function applyColonGeometry(colon, thickness) {
-    const g = geometryForThickness(thickness);
-    colon.set_style(`width: ${g.dot + 4}px;`);
-    for (const child of colon.get_children()) {
-        if ((child.style_class || '').includes('seven-seg-colon-spacer')) {
-            child.set_style(`height: ${g.vLen}px;`);
-            continue;
-        }
-        child.set_size(g.dot, g.dot);
-    }
-}
-
-/**
- * Build one digit as nested boxes (reliable in St, no absolute CSS):
- *   a
- * f   b
- *   g
- * e   c
- *   d
+ * Install the bundled TTF into the user font dir and refresh fontconfig.
  *
- * @returns {St.BoxLayout}
+ * @param {string} extensionPath
+ * @returns {Promise<boolean>}
  */
-function createDigit() {
-    const digit = new St.BoxLayout({
-        style_class: 'seven-seg-digit',
-        vertical: true,
-        x_expand: false,
-        y_expand: false,
-        y_align: Clutter.ActorAlign.CENTER,
-    });
+function ensureDsegFont(extensionPath) {
+    if (_fontReady)
+        return _fontReady;
 
-    const segments = {
-        a: createSegment('a'),
-        b: createSegment('b'),
-        c: createSegment('c'),
-        d: createSegment('d'),
-        e: createSegment('e'),
-        f: createSegment('f'),
-        g: createSegment('g'),
-    };
+    _fontReady = new Promise(resolve => {
+        try {
+            if (!extensionPath) {
+                resolve(false);
+                return;
+            }
 
-    const top = new St.BoxLayout({
-        style_class: 'seven-seg-row-h',
-        x_align: Clutter.ActorAlign.CENTER,
-    });
-    top.add_child(segments.a);
+            const srcPath = GLib.build_filenamev([
+                extensionPath, 'fonts', FONT_FILE,
+            ]);
+            const src = Gio.File.new_for_path(srcPath);
+            if (!src.query_exists(null)) {
+                console.warn(`Bottom Panel: missing font ${srcPath}`);
+                resolve(false);
+                return;
+            }
 
-    const upper = new St.BoxLayout({style_class: 'seven-seg-row-v'});
-    upper.add_child(segments.f);
-    upper.add_child(new St.Widget({style_class: 'seven-seg-gap', x_expand: true}));
-    upper.add_child(segments.b);
+            const destDirPath = GLib.build_filenamev([
+                GLib.get_user_data_dir(), 'fonts', 'bottom-panel',
+            ]);
+            GLib.mkdir_with_parents(destDirPath, 0o755);
 
-    const mid = new St.BoxLayout({
-        style_class: 'seven-seg-row-h',
-        x_align: Clutter.ActorAlign.CENTER,
-    });
-    mid.add_child(segments.g);
+            const dest = Gio.File.new_for_path(
+                GLib.build_filenamev([destDirPath, FONT_FILE]));
 
-    const lower = new St.BoxLayout({style_class: 'seven-seg-row-v'});
-    lower.add_child(segments.e);
-    lower.add_child(new St.Widget({style_class: 'seven-seg-gap', x_expand: true}));
-    lower.add_child(segments.c);
+            src.copy(dest, Gio.FileCopyFlags.OVERWRITE, null, null);
 
-    const bottom = new St.BoxLayout({
-        style_class: 'seven-seg-row-h',
-        x_align: Clutter.ActorAlign.CENTER,
-    });
-    bottom.add_child(segments.d);
+            GLib.spawn_command_line_async(`fc-cache -f "${destDirPath}"`);
 
-    digit.add_child(top);
-    digit.add_child(upper);
-    digit.add_child(mid);
-    digit.add_child(lower);
-    digit.add_child(bottom);
-
-    digit._segments = segments;
-    digit._vRows = [upper, lower];
-    return digit;
-}
-
-/**
- * @param {St.Widget} digit
- * @param {number} value — 0–9, or -1 to blank
- * @param {string} hex
- */
-function setDigitValue(digit, value, hex) {
-    const on = value >= 0 && value <= 9
-        ? new Set(DIGIT_SEGMENTS[value])
-        : new Set();
-
-    for (const [name, seg] of Object.entries(digit._segments)) {
-        if (on.has(name)) {
-            seg.add_style_class_name('on');
-            seg.set_style(litSegmentStyle(hex));
-        } else {
-            seg.remove_style_class_name('on');
-            seg.set_style(null);
+            // Give fontconfig a brief moment before first paint.
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
+                resolve(true);
+                return GLib.SOURCE_REMOVE;
+            });
+        } catch (e) {
+            console.warn(`Bottom Panel: could not install DSEG font: ${e}`);
+            resolve(false);
         }
-    }
+    });
+
+    return _fontReady;
 }
 
 /**
- * @returns {St.BoxLayout}
+ * @param {number} thickness — 1–8
+ * @returns {number} px
  */
-function createColon() {
-    const colon = new St.BoxLayout({
-        style_class: 'seven-seg-colon',
-        vertical: true,
-        x_expand: false,
-        y_expand: false,
-        y_align: Clutter.ActorAlign.CENTER,
-        x_align: Clutter.ActorAlign.CENTER,
-    });
-    colon.add_child(new St.Widget({style_class: 'seven-seg-colon-dot'}));
-    colon.add_child(new St.Widget({style_class: 'seven-seg-colon-spacer'}));
-    colon.add_child(new St.Widget({style_class: 'seven-seg-colon-dot'}));
-    return colon;
+function fontSizeForThickness(thickness) {
+    const t = Math.max(1, Math.min(8, thickness | 0));
+    return 12 + t * 2;
 }
 
 export const SevenSegmentClock = GObject.registerClass(
@@ -270,6 +123,8 @@ class SevenSegmentClock extends St.Button {
      *   colonBlink?: boolean,
      *   ledColor?: string,
      *   hourFormat?: string,
+     *   thickness?: number,
+     *   extensionPath?: string,
      * }} [options]
      */
     _init(options = {}) {
@@ -288,29 +143,28 @@ class SevenSegmentClock extends St.Button {
         this._ledColor = LED_PRESETS.red;
         this._thickness = 2;
         this._hourFormat = '24';
+        this._extensionPath = '';
         this._tickId = 0;
         this._colonLit = true;
-        this._digits = [];
-        this._colons = [];
+        this._timeText = '00:00';
 
-        this._row = new St.BoxLayout({
-            style_class: 'seven-seg-row',
-            y_expand: true,
+        this._label = new St.Label({
+            style_class: 'seven-seg-label',
             y_align: Clutter.ActorAlign.CENTER,
         });
-        this.set_child(this._row);
-
-        this._ampm = new St.Label({
-            style_class: 'seven-seg-ampm',
-            y_align: Clutter.ActorAlign.END,
-            visible: false,
-        });
-        this._row.add_child(this._ampm);
+        this.set_child(this._label);
 
         this.setOptions(options);
         this._ensureDateMenuUpward();
         this._syncTime();
         this._startTick();
+
+        if (this._extensionPath) {
+            ensureDsegFont(this._extensionPath).then(ok => {
+                if (ok && this._label)
+                    this._applyStyle();
+            });
+        }
 
         this.connect('clicked', () => this._toggleCalendar());
         this.connect('destroy', () => this._onDestroy());
@@ -323,89 +177,47 @@ class SevenSegmentClock extends St.Button {
      *   ledColor?: string,
      *   hourFormat?: string,
      *   thickness?: number,
+     *   extensionPath?: string,
      * }} options
      */
     setOptions(options = {}) {
-        let rebuild = false;
-
-        if (options.format === 'hm' || options.format === 'hms') {
-            if (this._format !== options.format)
-                rebuild = true;
+        if (options.format === 'hm' || options.format === 'hms')
             this._format = options.format;
-        }
         if (typeof options.colonBlink === 'boolean')
             this._colonBlink = options.colonBlink;
         if (options.ledColor)
             this._ledColor = normalizeLedColor(options.ledColor);
         if (typeof options.thickness === 'number' && Number.isFinite(options.thickness))
             this._thickness = Math.max(1, Math.min(8, Math.round(options.thickness)));
-        if (options.hourFormat === '12' || options.hourFormat === '24') {
-            if (this._hourFormat !== options.hourFormat)
-                this._ampm.visible = options.hourFormat === '12';
+        if (options.hourFormat === '12' || options.hourFormat === '24')
             this._hourFormat = options.hourFormat;
-        }
+        if (typeof options.extensionPath === 'string' && options.extensionPath)
+            this._extensionPath = options.extensionPath;
 
-        if (rebuild || this._digits.length === 0)
-            this._rebuildFace();
-        else
-            this._applyGeometry();
+        this._applyStyle();
         this._syncTime();
     }
 
-    _applyGeometry() {
-        for (const digit of this._digits)
-            applyDigitGeometry(digit, this._thickness);
-        for (const colon of this._colons)
-            applyColonGeometry(colon, this._thickness);
-    }
-
-    _rebuildFace() {
-        // Keep AM/PM label; remove digits/colons.
-        const children = this._row.get_children();
-        for (const child of children) {
-            if (child !== this._ampm) {
-                this._row.remove_child(child);
-                child.destroy();
-            }
-        }
-
-        this._digits = [];
-        this._colons = [];
-
-        const showSeconds = this._format === 'hms';
-        const groups = showSeconds ? 3 : 2;
-
-        for (let g = 0; g < groups; g++) {
-            if (g > 0) {
-                const colon = createColon();
-                this._row.insert_child_at_index(colon, this._row.get_n_children() - 1);
-                this._colons.push(colon);
-            }
-            for (let i = 0; i < 2; i++) {
-                const digit = createDigit();
-                this._row.insert_child_at_index(digit, this._row.get_n_children() - 1);
-                this._digits.push(digit);
-            }
-        }
-
-        this._ampm.visible = this._hourFormat === '12';
-        // AM/PM stays last.
-        this._row.set_child_above_sibling(this._ampm, null);
-        this._applyGeometry();
+    _applyStyle() {
+        const size = fontSizeForThickness(this._thickness);
+        const hex = this._ledColor;
+        this._label.set_style(
+            `font-family: "${FONT_FAMILY}", monospace; ` +
+            `font-weight: 700; ` +
+            `font-size: ${size}px; ` +
+            `color: ${hex}; ` +
+            `letter-spacing: 0.04em;`
+        );
     }
 
     _startTick() {
         this._stopTick();
         this._tickId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
-            if (this._colonBlink) {
+            if (this._colonBlink)
                 this._colonLit = !this._colonLit;
-                this._applyColonState();
-            } else if (!this._colonLit) {
+            else
                 this._colonLit = true;
-                this._applyColonState();
-            }
 
-            // Refresh time every half-second so seconds stay accurate.
             this._syncTime();
             return GLib.SOURCE_CONTINUE;
         });
@@ -418,24 +230,12 @@ class SevenSegmentClock extends St.Button {
         }
     }
 
-    _applyColonState() {
-        const hex = this._ledColor;
-        for (const colon of this._colons) {
-            if (this._colonLit)
-                colon.remove_style_class_name('colon-off');
-            else
-                colon.add_style_class_name('colon-off');
-
-            for (const child of colon.get_children()) {
-                if ((child.style_class || '').includes('seven-seg-colon-spacer'))
-                    continue;
-
-                if (this._colonLit)
-                    child.set_style(litDotStyle(hex));
-                else
-                    child.set_style('background-color: transparent; box-shadow: none;');
-            }
-        }
+    /**
+     * @param {number} n
+     * @returns {string}
+     */
+    _pad2(n) {
+        return n < 10 ? `0${n}` : `${n}`;
     }
 
     _syncTime() {
@@ -443,34 +243,24 @@ class SevenSegmentClock extends St.Button {
         let hours = now.getHours();
         const minutes = now.getMinutes();
         const seconds = now.getSeconds();
-        const hex = this._ledColor;
 
+        let suffix = '';
         if (this._hourFormat === '12') {
             const isPm = hours >= 12;
             hours = hours % 12;
             if (hours === 0)
                 hours = 12;
-            this._ampm.text = isPm ? 'PM' : 'AM';
-            this._ampm.set_style(`color: ${hex};`);
+            suffix = isPm ? ' PM' : ' AM';
         }
 
-        const parts = [
-            Math.floor(hours / 10), hours % 10,
-            Math.floor(minutes / 10), minutes % 10,
-        ];
-        if (this._format === 'hms') {
-            parts.push(Math.floor(seconds / 10), seconds % 10);
-        }
+        const colon = this._colonLit ? ':' : ' ';
+        let text = `${this._pad2(hours)}${colon}${this._pad2(minutes)}`;
+        if (this._format === 'hms')
+            text += `${colon}${this._pad2(seconds)}`;
+        text += suffix;
 
-        for (let i = 0; i < this._digits.length; i++)
-            setDigitValue(this._digits[i], parts[i] ?? 0, hex);
-
-        if (!this._colonBlink) {
-            this._colonLit = true;
-            this._applyColonState();
-        } else {
-            this._applyColonState();
-        }
+        this._timeText = text;
+        this._label.text = text;
     }
 
     _ensureDateMenuUpward() {
@@ -478,8 +268,6 @@ class SevenSegmentClock extends St.Button {
         if (!dateMenu?.menu)
             return;
 
-        // Anchor the calendar popup to this face (dateMenu may still live on
-        // the hidden top panel in seven-segment mode).
         dateMenu.menu.sourceActor = this;
         setMenuOpensUpward(dateMenu.menu);
     }
@@ -495,12 +283,8 @@ class SevenSegmentClock extends St.Button {
 
     _onDestroy() {
         this._stopTick();
-
         const dateMenu = Main.panel.statusArea?.dateMenu;
         if (dateMenu?.menu?.sourceActor === this)
             dateMenu.menu.sourceActor = dateMenu;
-
-        this._digits = [];
-        this._colons = [];
     }
 });
