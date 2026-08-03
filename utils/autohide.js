@@ -20,9 +20,11 @@ const SHOW_MS = 220;
 const HIDE_MS = 180;
 /** Visible/hit target along the bottom edge while the panel is hidden. */
 const HOT_EDGE_SIZE = 12;
-/** Extra pixels above the edge that still count as a reveal zone. */
-const REVEAL_THRESHOLD = 16;
-const POINTER_POLL_MS = 80;
+/** Extra pixels above the edge that still count as a reveal / stay zone. */
+const REVEAL_THRESHOLD = 20;
+const POINTER_POLL_MS = 100;
+/** After revealing, ignore hide requests briefly to avoid show/hide flicker. */
+const SHOW_GRACE_MS = 350;
 
 export class AutohideController {
     /**
@@ -32,11 +34,14 @@ export class AutohideController {
         this._panel = panel;
         this._enabled = false;
         this._hidden = false;
+        this._animating = false;
         this._delay = 400;
         this._hideTimeout = 0;
         this._recheckTimeout = 0;
         this._windowCheckId = 0;
         this._pollId = 0;
+        this._graceTimeout = 0;
+        this._inShowGrace = false;
         this._hotEdge = null;
         this._signalIds = [];
         this._overviewIds = [];
@@ -109,6 +114,7 @@ export class AutohideController {
         this._clearHideTimeout();
         this._clearRecheckTimeout();
         this._clearWindowCheck();
+        this._clearShowGrace();
         this._stopPointerPoll();
         this._disconnectWindowWatch();
         this._disconnectSignals();
@@ -296,12 +302,55 @@ export class AutohideController {
         return false;
     }
 
+    /**
+     * Pointer is over the panel height (or the thin reveal strip). More
+     * reliable than Actor.hover while the panel is animating in/out.
+     *
+     * @returns {boolean}
+     */
+    _isPointerInPanelZone() {
+        const monitor = Main.layoutManager.monitors[this._panel.monitorIndex];
+        if (!monitor)
+            return false;
+
+        const [x, y] = global.get_pointer();
+        if (x < monitor.x || x >= monitor.x + monitor.width)
+            return false;
+
+        const zone = Math.max(
+            this._panel.height || 40,
+            HOT_EDGE_SIZE,
+            REVEAL_THRESHOLD);
+        return y >= monitor.y + monitor.height - zone &&
+            y <= monitor.y + monitor.height + 2;
+    }
+
+    _beginShowGrace() {
+        this._clearShowGrace();
+        this._inShowGrace = true;
+        this._graceTimeout = GLib.timeout_add(
+            GLib.PRIORITY_DEFAULT, SHOW_GRACE_MS, () => {
+                this._graceTimeout = 0;
+                this._inShowGrace = false;
+                return GLib.SOURCE_REMOVE;
+            });
+    }
+
+    _clearShowGrace() {
+        if (this._graceTimeout) {
+            GLib.Source.remove(this._graceTimeout);
+            this._graceTimeout = 0;
+        }
+        this._inShowGrace = false;
+    }
+
     _onPanelEnter() {
         this._clearHideTimeout();
         this._show();
     }
 
     _onPanelLeave() {
+        // Hover often flickers during slide-in; always re-check via timer.
         this._queueHide();
     }
 
@@ -315,14 +364,15 @@ export class AutohideController {
             return;
         }
 
-        this._clearHideTimeout();
-
-        const delay = this._delay;
-        if (delay <= 0) {
-            this._tryHide();
+        // Pointer still in the dock zone → keep shown (stops bounce loop).
+        if (this._inShowGrace || this._isPointerInPanelZone()) {
+            this._clearHideTimeout();
             return;
         }
 
+        this._clearHideTimeout();
+
+        const delay = Math.max(this._delay, 50);
         this._hideTimeout = GLib.timeout_add(
             GLib.PRIORITY_DEFAULT, delay, () => {
                 this._hideTimeout = 0;
@@ -355,7 +405,9 @@ export class AutohideController {
                     this._pollId = 0;
                     return GLib.SOURCE_REMOVE;
                 }
-                if (this._hidden)
+                // Only reveal after the panel is fully unmapped — never while
+                // a hide animation is still running (that caused flicker).
+                if (this._hidden && !this._panel.visible && !this._animating)
                     this._checkPointerNearEdge();
                 return GLib.SOURCE_CONTINUE;
             });
@@ -373,19 +425,12 @@ export class AutohideController {
      * Works even if the hot-edge actor is covered by another chrome actor.
      */
     _checkPointerNearEdge() {
-        if (!this._hidden || this._isBlockedByShell())
+        if (!this._hidden || this._panel.visible || this._animating)
+            return;
+        if (this._isBlockedByShell())
             return;
 
-        const monitor = Main.layoutManager.monitors[this._panel.monitorIndex];
-        if (!monitor)
-            return;
-
-        const [x, y] = global.get_pointer();
-        if (x < monitor.x || x >= monitor.x + monitor.width)
-            return;
-        if (y < monitor.y + monitor.height - REVEAL_THRESHOLD)
-            return;
-        if (y > monitor.y + monitor.height)
+        if (!this._isPointerInPanelZone())
             return;
 
         this._show();
@@ -403,8 +448,12 @@ export class AutohideController {
             return true;
         if (this._isBlockedByShell())
             return true;
+        if (this._inShowGrace)
+            return true;
         // Desktop / floating windows: always keep the panel out.
         if (!this._hasObscuringWindow())
+            return true;
+        if (this._isPointerInPanelZone())
             return true;
         if (this._panel.visible && this._panel.hover)
             return true;
@@ -446,6 +495,7 @@ export class AutohideController {
     _showImmediate() {
         this._clearHideTimeout();
         this._clearRecheckTimeout();
+        this._animating = false;
         this._panel.remove_all_transitions();
         this._panel.reactive = true;
         this._panel.translation_y = 0;
@@ -458,6 +508,7 @@ export class AutohideController {
 
     _show() {
         this._clearHideTimeout();
+        this._beginShowGrace();
 
         const needsReveal = this._hidden || !this._panel.visible ||
             this._panel.translation_y !== 0 || this._panel.opacity < 255;
@@ -472,25 +523,31 @@ export class AutohideController {
             this._panel.show();
         }
 
+        // Hide hot edge without queuing a hide (leave-event is not connected).
         this._syncHotEdgeVisibility();
 
         if (!needsReveal) {
+            this._animating = false;
             this._panel.translation_y = 0;
             this._panel.opacity = 255;
             return;
         }
 
+        this._animating = true;
         this._panel.remove_all_transitions();
         this._panel.ease({
             opacity: 255,
             translation_y: 0,
             duration: SHOW_MS,
             mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+            onComplete: () => {
+                this._animating = false;
+            },
         });
     }
 
     _hide() {
-        if (this._hidden)
+        if (this._hidden || this._animating)
             return;
 
         // Safety: never hide without an obscuring maximized window.
@@ -499,7 +556,12 @@ export class AutohideController {
             return;
         }
 
+        // Final pointer check — avoids hide→show bounce at the bottom edge.
+        if (this._isPointerInPanelZone() || this._inShowGrace)
+            return;
+
         this._hidden = true;
+        this._animating = true;
         const offset = Math.max(this._panel.height || 40, 40) + 4;
 
         this._panel.remove_all_transitions();
@@ -509,8 +571,14 @@ export class AutohideController {
             duration: HIDE_MS,
             mode: Clutter.AnimationMode.EASE_IN_CUBIC,
             onComplete: () => {
+                this._animating = false;
                 if (!this._hidden)
                     return;
+                // If the pointer came back during the animation, abort hide.
+                if (this._isPointerInPanelZone()) {
+                    this._show();
+                    return;
+                }
                 // Unmap so the panel cannot steal pointer events from the
                 // hot edge / desktop at the bottom of the screen.
                 this._panel.reactive = false;
@@ -530,11 +598,13 @@ export class AutohideController {
             opacity: 0,
         });
 
+        // Only reveal on enter — never queue hide on leave. Hiding the hot
+        // edge when the panel appears synthesizes leave-event and used to
+        // bounce the panel up and down.
         this._hotEdge.connect('enter-event', () => {
             this._clearHideTimeout();
             this._show();
         });
-        this._hotEdge.connect('leave-event', () => this._queueHide());
         this._hotEdge.connect('notify::hover', () => {
             if (this._hotEdge.hover) {
                 this._clearHideTimeout();
@@ -574,7 +644,7 @@ export class AutohideController {
         if (!this._hotEdge)
             return;
 
-        if (this._enabled && this._hidden) {
+        if (this._enabled && this._hidden && !this._panel.visible) {
             this._hotEdge.show();
             try {
                 Main.layoutManager.uiGroup.set_child_above_sibling(
