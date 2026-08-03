@@ -1,14 +1,5 @@
 /**
- * taskbar.js — Favorites + running applications using the stock GNOME Dash.
- *
- * Extending Dash.Dash reuses AppIcon, show-apps button, favorites sync, and
- * running-app tracking from the Shell. We only restyle and constrain icon size
- * for the bottom panel.
- *
- * Limitation: Dash.Dash is designed for the overview. Some overview-only
- * behaviors (drag-to-workspace, label placement) need small adjustments when
- * the dash lives on a permanent chrome actor. Labels are positioned above the
- * icon when the panel is at the bottom.
+ * Favorites + running apps based on the stock GNOME Dash.
  */
 
 import Clutter from 'gi://Clutter';

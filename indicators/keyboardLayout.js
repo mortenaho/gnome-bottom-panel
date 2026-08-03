@@ -1,8 +1,5 @@
 /**
- * keyboardLayout.js — Keyboard layout indicator with character / flat flag / both.
- *
- * Flags are flat PNG assets filled edge-to-edge via CSS background-image
- * (avoids St.Icon square letterboxing). No emoji / no wave / no border.
+ * Keyboard layout indicator (character, flat flag, or both).
  */
 
 import Clutter from 'gi://Clutter';

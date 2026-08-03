@@ -1,5 +1,5 @@
 /**
- * prefs.js — Preferences window (Adw / GTK 4) for GNOME Shell 45+.
+ * Preferences window (Adw / GTK 4).
  */
 
 import Adw from 'gi://Adw';

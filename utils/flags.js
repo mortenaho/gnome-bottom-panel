@@ -1,13 +1,8 @@
 /**
- * flags.js — Flat rectangular country-flag assets (no emoji / no wave).
- *
- * Primary assets are user-provided PNGs under flags/<iso>.png
- * (e.g. US/EN and IR). SVG is only a fallback for other countries.
+ * Flat rectangular country-flag assets under flags/<iso>.png|.svg.
  */
 
-import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
-import St from 'gi://St';
 
 /** Layout / language id → ISO 3166-1 alpha-2 (lowercase file stem). */
 export const LAYOUT_TO_COUNTRY = {
@@ -66,7 +61,6 @@ export function flagFilePath(extensionPath, country) {
     if (!extensionPath || !country)
         return null;
     const stem = country.toLowerCase();
-    // Prefer PNG (reliable in St.Icon); fall back to SVG.
     for (const ext of ['png', 'svg']) {
         const path = GLib.build_filenamev([
             extensionPath, 'flags', `${stem}.${ext}`,
@@ -75,33 +69,4 @@ export function flagFilePath(extensionPath, country) {
             return path;
     }
     return null;
-}
-
-/**
- * Build an St.Icon showing a flat rectangular flag.
- *
- * @param {string} extensionPath
- * @param {string} country
- * @param {number} [height=14]
- * @returns {St.Icon|null}
- */
-export function createFlagIcon(extensionPath, country, height = 14) {
-    const path = flagFilePath(extensionPath, country);
-    if (!path)
-        return null;
-
-    const file = Gio.File.new_for_path(path);
-    const gicon = new Gio.FileIcon({file});
-
-    // 3:2 rectangle — width = height * 1.5
-    const width = Math.round(height * 1.5);
-
-    const icon = new St.Icon({
-        gicon,
-        style_class: 'bottom-panel-kb-flag-icon',
-        // St.Icon uses square icon_size; we constrain via CSS bin instead.
-        icon_size: Math.max(width, height),
-    });
-
-    return {icon, width, height};
 }

@@ -1,11 +1,6 @@
 /**
- * panel.js — BottomPanel actor for a single monitor (Windows 11-inspired layout).
- *
- * Layout:
- *   [ left: workspaces? ] [ center: Start + taskbar ] [ right: clock? + tray + keyboard ]
- *
- * The taskbar cluster is centered like Windows 11. System indicators stay on
- * the primary monitor only.
+ * BottomPanel actor for a single monitor.
+ * Layout: [workspaces?] [Start + taskbar] [clock? + tray + keyboard]
  */
 
 import Clutter from 'gi://Clutter';

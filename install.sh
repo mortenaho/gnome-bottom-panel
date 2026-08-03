@@ -2,7 +2,7 @@
 # install.sh — install Bottom Panel without requiring Make
 set -euo pipefail
 
-UUID="bottom-panel@gnome-extension.local"
+UUID="bottom-panel@mortenaho.github.io"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 EXT_DIR="${HOME}/.local/share/gnome-shell/extensions/${UUID}"
 
@@ -17,6 +17,7 @@ rsync -a --delete \
   --exclude 'Makefile' \
   --exclude 'install.sh' \
   --exclude '.gitignore' \
+  --exclude 'README.md' \
   "${ROOT}/" "${EXT_DIR}/"
 
 glib-compile-schemas "${EXT_DIR}/schemas/"

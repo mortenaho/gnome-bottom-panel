@@ -1,21 +1,7 @@
 /**
- * systemTray.js — Reparent native GNOME Shell status indicators into the
- * bottom panel instead of reimplementing Quick Settings / clock / battery.
- *
- * Why reparent?
- *   Network, Bluetooth, Volume, Brightness, Power profiles, Battery, Lock /
- *   Log Out / Power Off all live inside Main.panel.statusArea.quickSettings
- *   (and dateMenu for clock + calendar + notification list). Re-creating them
- *   would diverge from Shell internals and break on every GNOME release.
- *
- * Limitation:
- *   Indicators are singletons owned by Main.panel. They can only appear on
- *   one panel at a time — the primary monitor. Secondary panels get a
- *   lightweight clock label instead (see SecondaryClock).
- *
- * Menu direction:
- *   PanelMenu.Button menus default to St.Side.TOP. After moving to a bottom
- *   panel we flip arrow sides so popups open upward.
+ * Reparent native status indicators (Quick Settings, dateMenu, …) into the
+ * bottom panel. Indicators are Shell singletons, so they only appear on the
+ * primary monitor; secondary panels use SecondaryClock.
  */
 
 import Clutter from 'gi://Clutter';
@@ -84,9 +70,7 @@ export function setMenuOpensUpward(menu) {
     if (!menu || menu.isDummy)
         return;
 
-    // Only set the arrow side. Do NOT call _updateFlip() here — BoxPointer
-    // may not have allocated _sourceExtents yet and will throw:
-    //   TypeError: can't access property "get_top_left", this._sourceExtents is undefined
+    // Avoid _updateFlip() before BoxPointer has allocated extents.
     try {
         menu._arrowSide = St.Side.BOTTOM;
         if (menu._boxPointer)

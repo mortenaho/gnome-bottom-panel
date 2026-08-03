@@ -1,8 +1,5 @@
 /**
- * theming.js — Light/dark adaptation and panel visual styling.
- *
- * Follows org.gnome.desktop.interface color-scheme so the bottom panel
- * tracks the same preference as the rest of GNOME Shell / libadwaita.
+ * Light/dark adaptation and panel visual styling.
  */
 
 import Gio from 'gi://Gio';

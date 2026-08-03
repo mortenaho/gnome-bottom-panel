@@ -1,7 +1,7 @@
 #!/usr/bin/make -f
 # Makefile — build schemas, pack, and install Bottom Panel
 
-UUID = bottom-panel@gnome-extension.local
+UUID = bottom-panel@mortenaho.github.io
 EXT_DIR = $(HOME)/.local/share/gnome-shell/extensions/$(UUID)
 
 .PHONY: all schemas install uninstall pack enable disable restart-shell logs clean
@@ -18,7 +18,9 @@ install: schemas
 		--exclude 'agent-tools/' \
 		--exclude '*.zip' \
 		--exclude 'Makefile' \
+		--exclude 'install.sh' \
 		--exclude '.gitignore' \
+		--exclude 'README.md' \
 		./ "$(EXT_DIR)/"
 	glib-compile-schemas "$(EXT_DIR)/schemas/"
 	@echo "Installed to $(EXT_DIR)"
@@ -29,6 +31,7 @@ uninstall:
 	rm -rf "$(EXT_DIR)"
 	@echo "Removed $(EXT_DIR)"
 
+# Zip contents for extensions.gnome.org: runtime files only.
 pack: schemas
 	rm -f $(UUID).zip
 	zip -r $(UUID).zip \
@@ -38,13 +41,13 @@ pack: schemas
 		panelManager.js \
 		prefs.js \
 		stylesheet.css \
+		LICENSE \
 		indicators \
 		widgets \
 		utils \
 		flags \
-		schemas \
-		README.md \
-		-x "*.gschema.xml~" -x "*~"
+		schemas/*.gschema.xml \
+		-x "*~" -x "*.gschema.xml~" -x "schemas/gschemas.compiled"
 	@echo "Created $(UUID).zip"
 
 enable:
