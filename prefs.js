@@ -141,6 +141,45 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
             _('Running applications'), _('Open application icons')));
         contents.add(this._switchRow(settings, 'show-show-apps-button',
             _('Show Apps button'), _('Opens the application overview')));
+
+        const taskbarDir = new Adw.ComboRow({
+            title: _('Taskbar direction'),
+            subtitle: _('Order of the Apps button and application icons'),
+            model: new Gtk.StringList({
+                strings: [_('Left to right'), _('Right to left')],
+            }),
+        });
+        const applyTaskbarDir = () => {
+            const value = settings.get_string('taskbar-direction');
+            taskbarDir.selected = value === 'rtl' ? 1 : 0;
+        };
+        applyTaskbarDir();
+        taskbarDir.connect('notify::selected', () => {
+            settings.set_string('taskbar-direction',
+                taskbarDir.selected === 1 ? 'rtl' : 'ltr');
+        });
+        settings.connect('changed::taskbar-direction', applyTaskbarDir);
+        contents.add(taskbarDir);
+
+        const taskbarAlign = new Adw.ComboRow({
+            title: _('Taskbar alignment'),
+            subtitle: _('Place the Apps button and icons in the center or toward the right'),
+            model: new Gtk.StringList({
+                strings: [_('Center'), _('Right')],
+            }),
+        });
+        const applyTaskbarAlign = () => {
+            const value = settings.get_string('taskbar-alignment');
+            taskbarAlign.selected = value === 'right' ? 1 : 0;
+        };
+        applyTaskbarAlign();
+        taskbarAlign.connect('notify::selected', () => {
+            settings.set_string('taskbar-alignment',
+                taskbarAlign.selected === 1 ? 'right' : 'center');
+        });
+        settings.connect('changed::taskbar-alignment', applyTaskbarAlign);
+        contents.add(taskbarAlign);
+
         contents.add(this._switchRow(settings, 'show-workspaces',
             _('Workspace indicator'), _('Clickable workspace dots')));
         contents.add(this._switchRow(settings, 'show-clock',

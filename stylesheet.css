@@ -4,14 +4,19 @@
     background-color: transparent;
 }
 
-.bottom-panel-shell {
+.bottom-panel-left,
+.bottom-panel-center,
+.bottom-panel-right,
+.bottom-panel-right-content {
     spacing: 4px;
 }
 
-.bottom-panel-left,
-.bottom-panel-center,
-.bottom-panel-right {
-    spacing: 4px;
+.bottom-panel-right-content {
+    padding-left: 10px;
+}
+
+.bottom-panel-left {
+    padding-right: 10px;
 }
 
 .bottom-panel-center-cluster {

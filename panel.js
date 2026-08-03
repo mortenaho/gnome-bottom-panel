@@ -54,11 +54,17 @@ class BottomPanel extends St.Widget {
         this._disposeColorWatch = null;
         this._chromeTracked = false;
 
+        // Panel chrome is always LTR so left/center/right stay in fixed
+        // screen positions even when the session language is RTL.
+        this.text_direction = Clutter.TextDirection.LTR;
+
+        // Non-overlapping columns: tray/clock/keyboard never sit under apps.
         this._shell = new St.BoxLayout({
             style_class: 'bottom-panel-shell',
             x_expand: true,
             y_expand: true,
             vertical: false,
+            text_direction: Clutter.TextDirection.LTR,
         });
         this.add_child(this._shell);
 
@@ -68,6 +74,7 @@ class BottomPanel extends St.Widget {
             y_expand: true,
             y_align: Clutter.ActorAlign.CENTER,
             x_align: Clutter.ActorAlign.START,
+            text_direction: Clutter.TextDirection.LTR,
         });
         this._centerBox = new St.BoxLayout({
             style_class: 'bottom-panel-center',
@@ -76,15 +83,27 @@ class BottomPanel extends St.Widget {
             x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,
         });
-        this._rightBox = new St.BoxLayout({
+        this._rightBox = new St.Widget({
             style_class: 'bottom-panel-right',
             x_expand: true,
             y_expand: true,
-            y_align: Clutter.ActorAlign.CENTER,
             x_align: Clutter.ActorAlign.END,
+            y_align: Clutter.ActorAlign.FILL,
+            layout_manager: new Clutter.BinLayout(),
         });
+        // Inner tray strip stays pinned to the physical right edge even when
+        // the outer column is widened to keep the taskbar screen-centered.
+        this._rightContent = new St.BoxLayout({
+            style_class: 'bottom-panel-right-content',
+            y_expand: true,
+            x_expand: true,
+            x_align: Clutter.ActorAlign.END,
+            y_align: Clutter.ActorAlign.CENTER,
+            text_direction: Clutter.TextDirection.LTR,
+        });
+        this._rightBox.add_child(this._rightContent);
 
-        // Center cluster: Start + taskbar (Win11 style)
+        // Center cluster: Start + taskbar (direction is configurable)
         this._centerCluster = new St.BoxLayout({
             style_class: 'bottom-panel-center-cluster',
             y_expand: true,
@@ -96,9 +115,20 @@ class BottomPanel extends St.Widget {
         this._shell.add_child(this._centerBox);
         this._shell.add_child(this._rightBox);
 
+        this._balancingSides = false;
+        this._shell.connect('notify::allocation',
+            () => this._balanceSideColumns());
+        this._centerCluster.connect('notify::allocation',
+            () => this._balanceSideColumns());
+        this._rightBox.connect('notify::allocation',
+            () => this._balanceSideColumns());
+        this._rightContent.connect('notify::allocation',
+            () => this._balanceSideColumns());
+
         this._buildContents();
         this._applyVisuals();
         this._positionOnMonitor();
+        this._balanceSideColumns();
         this._trackChrome();
 
         if (this._options.scrollPanelWorkspaces) {
@@ -139,12 +169,16 @@ class BottomPanel extends St.Widget {
             monitorIndex: this.monitorIndex,
             isolateMonitors: opts.isolateMonitors,
             isolateWorkspaces: opts.isolateWorkspaces,
+            direction: opts.taskbarDirection,
         });
         this._centerCluster.add_child(this._taskbar);
 
+        this._applyTaskbarDirection(opts.taskbarDirection);
+        this._applyTaskbarAlignment(opts.taskbarAlignment);
+
         const clockBox = opts.clockPosition === 'center'
             ? this._centerBox
-            : this._rightBox;
+            : this._rightContent;
 
         if (this.isPrimary) {
             this._buildPrimaryTray(clockBox);
@@ -173,7 +207,7 @@ class BottomPanel extends St.Widget {
 
         try {
             this._systemTray = new SystemTrayManager(
-                this._rightBox,
+                this._rightContent,
                 clockBox,
                 {
                     showClock: opts.showClock,
@@ -197,15 +231,96 @@ class BottomPanel extends St.Widget {
         for (const id of order) {
             if (id === 'clock') {
                 if (!clockCentered)
-                    this._placeClockItem(this._rightBox);
+                    this._placeClockItem(this._rightContent);
             } else if (id === 'system') {
-                this._systemTray?.placeSystemIndicators(this._rightBox);
+                this._systemTray?.placeSystemIndicators(this._rightContent);
             } else if (id === 'keyboard') {
                 this._placeKeyboardItem();
             }
         }
 
         this._applyTrayIconSize(opts.trayIconSize);
+    }
+
+    /**
+     * Apply LTR/RTL packing to the Start + taskbar cluster only.
+     * Panel chrome (left / right tray) stays LTR so clock, keyboard, and
+     * system indicators remain on the physical right edge.
+     *
+     * @param {string} direction — `"ltr"` or `"rtl"`
+     */
+    _applyTaskbarDirection(direction) {
+        this.text_direction = Clutter.TextDirection.LTR;
+        this._shell.text_direction = Clutter.TextDirection.LTR;
+        this._leftBox.text_direction = Clutter.TextDirection.LTR;
+        this._rightContent.text_direction = Clutter.TextDirection.LTR;
+
+        const dir = direction === 'rtl'
+            ? Clutter.TextDirection.RTL
+            : Clutter.TextDirection.LTR;
+        this._centerCluster.text_direction = dir;
+        this._taskbar?.setDirection?.(direction);
+    }
+
+    /**
+     * Place the Start + taskbar cluster in the center or toward the right
+     * (just before clock / keyboard / tray).
+     *
+     * @param {string} alignment — `"center"` or `"right"`
+     */
+    _applyTaskbarAlignment(alignment) {
+        if (alignment === 'right') {
+            this._leftBox.set_width(-1);
+            this._rightBox.set_width(-1);
+            this._leftBox.x_expand = true;
+            this._rightBox.x_expand = false;
+        } else {
+            // Fixed equal side columns → true screen center, no overlap.
+            this._leftBox.x_expand = false;
+            this._rightBox.x_expand = false;
+            this._balanceSideColumns();
+        }
+        this._shell.queue_relayout();
+    }
+
+    /**
+     * Keep left/right columns the same width so the taskbar sits at the
+     * real horizontal center of the monitor, while tray stays on the right.
+     */
+    _balanceSideColumns() {
+        if (this._balancingSides || !this._shell)
+            return;
+        if ((this._options.taskbarAlignment ?? 'center') === 'right')
+            return;
+
+        const shellW = this._shell.width;
+        if (shellW <= 0)
+            return;
+
+        this._balancingSides = true;
+        try {
+            this._leftBox.set_width(-1);
+            this._rightBox.set_width(-1);
+
+            const centerW = Math.ceil(
+                this._centerBox.get_preferred_width(-1)[1]);
+            const leftNat = Math.ceil(
+                this._leftBox.get_preferred_width(-1)[1]);
+            const rightNat = Math.ceil(
+                this._rightContent.get_preferred_width(-1)[1]);
+
+            const sideW = Math.max(
+                leftNat,
+                rightNat,
+                Math.floor((shellW - centerW) / 2));
+
+            if (sideW > 0) {
+                this._leftBox.set_width(sideW);
+                this._rightBox.set_width(sideW);
+            }
+        } finally {
+            this._balancingSides = false;
+        }
     }
 
     /**
@@ -233,7 +348,7 @@ class BottomPanel extends St.Widget {
             opts.keyboardDisplayMode,
             opts.extensionPath ?? '');
         this._keyboard.setIconSize(opts.trayIconSize ?? 16);
-        this._rightBox.add_child(this._keyboard.container);
+        this._rightContent.add_child(this._keyboard.container);
     }
 
     /**
@@ -241,7 +356,7 @@ class BottomPanel extends St.Widget {
      */
     _applyTrayIconSize(size) {
         const n = Math.max(12, Math.min(48, size | 0));
-        this._rightBox.set_style(`icon-size: ${n}px;`);
+        this._rightContent.set_style(`icon-size: ${n}px;`);
         this._systemTray?.applyTrayIconSize(n);
         this._keyboard?.setIconSize?.(n);
     }
@@ -289,6 +404,7 @@ class BottomPanel extends St.Widget {
 
         this.set_position(x, y);
         this.set_size(width, height);
+        this._balanceSideColumns();
     }
 
     _trackChrome() {
@@ -335,7 +451,12 @@ class BottomPanel extends St.Widget {
             showShowAppsButton: false,
             isolateMonitors: options.isolateMonitors,
             isolateWorkspaces: options.isolateWorkspaces,
+            direction: options.taskbarDirection,
         });
+
+        this._applyTaskbarDirection(options.taskbarDirection);
+        this._applyTaskbarAlignment(options.taskbarAlignment);
+        this._balanceSideColumns();
 
         this._startButton?.setIconSize?.(options.iconSize);
         this._keyboard?.setDisplayMode?.(options.keyboardDisplayMode);

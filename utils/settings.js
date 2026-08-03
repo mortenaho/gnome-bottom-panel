@@ -99,6 +99,8 @@ export function getPanelOptions() {
         showFavorites: s.get_boolean('show-favorites'),
         showRunningApps: s.get_boolean('show-running-apps'),
         showShowAppsButton: s.get_boolean('show-show-apps-button'),
+        taskbarDirection: s.get_string('taskbar-direction'),
+        taskbarAlignment: s.get_string('taskbar-alignment'),
         showWorkspaces: s.get_boolean('show-workspaces'),
         showClock: s.get_boolean('show-clock'),
         clockPosition: s.get_string('clock-position'),

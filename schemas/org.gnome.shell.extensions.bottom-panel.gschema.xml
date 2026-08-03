@@ -103,6 +103,26 @@
       <description>Show the grid button that opens the application overview.</description>
     </key>
 
+    <key name="taskbar-direction" type="s">
+      <default>"ltr"</default>
+      <summary>Taskbar direction</summary>
+      <description>Icon arrangement in the Start + taskbar cluster: "ltr" (left to right) or "rtl" (right to left).</description>
+      <choices>
+        <choice value="ltr"/>
+        <choice value="rtl"/>
+      </choices>
+    </key>
+
+    <key name="taskbar-alignment" type="s">
+      <default>"center"</default>
+      <summary>Taskbar alignment</summary>
+      <description>Horizontal placement of the Start + taskbar cluster: "center" or "right" (just before the system tray).</description>
+      <choices>
+        <choice value="center"/>
+        <choice value="right"/>
+      </choices>
+    </key>
+
     <key name="show-workspaces" type="b">
       <default>false</default>
       <summary>Show workspace indicator</summary>

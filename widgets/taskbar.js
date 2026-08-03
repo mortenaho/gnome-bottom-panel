@@ -234,6 +234,24 @@ class Taskbar extends St.BoxLayout {
 
         this.add_child(container);
         this._dashContainer = container;
+        this.setDirection(this._params.direction);
+    }
+
+    /**
+     * @param {string} [direction] — `"ltr"` or `"rtl"`
+     */
+    setDirection(direction) {
+        const value = direction === 'rtl' ? 'rtl' : 'ltr';
+        this._params.direction = value;
+        const dir = value === 'rtl'
+            ? Clutter.TextDirection.RTL
+            : Clutter.TextDirection.LTR;
+
+        this.text_direction = dir;
+        if (this._dashContainer)
+            this._dashContainer.text_direction = dir;
+        if (this._dash?._box)
+            this._dash._box.text_direction = dir;
     }
 
     /**
@@ -244,6 +262,9 @@ class Taskbar extends St.BoxLayout {
         if (updates.iconSize && this._dash)
             this._dash.setIconSize(updates.iconSize);
         this._dash?._refilterItems?.();
+
+        if (updates.direction !== undefined)
+            this.setDirection(updates.direction);
 
         if (updates.showShowAppsButton !== undefined && this._dash?.showAppsButton) {
             if (updates.showShowAppsButton)
