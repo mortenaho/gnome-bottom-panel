@@ -146,83 +146,15 @@
     font-size: 0.92em;
 }
 
-/* —— Seven-segment clock —— */
+/* —— Seven-segment clock (DSEG7 Classic Bold) —— */
 
 .bottom-panel-seven-seg {
-    padding: 2px 8px;
+    padding: 0 8px;
 }
 
-.seven-seg-row {
-    spacing: 3px;
-}
-
-.seven-seg-digit {
-    spacing: 1px;
-    width: 14px;
-    height: 26px;
-}
-
-.seven-seg-row-h {
-    spacing: 0;
-}
-
-.seven-seg-row-v {
-    spacing: 0;
-    height: 7px;
-}
-
-.seven-seg-gap {
-    width: 4px;
-    min-width: 4px;
-}
-
-.seven-seg-seg {
-    background-color: transparent;
-    border-radius: 1px;
-}
-
-.seven-seg-a,
-.seven-seg-g,
-.seven-seg-d {
-    width: 10px;
-    height: 2px;
-}
-
-.seven-seg-b,
-.seven-seg-c,
-.seven-seg-e,
-.seven-seg-f {
-    width: 2px;
-    height: 7px;
-}
-
-.seven-seg-colon {
-    spacing: 0;
-    padding: 0 2px;
-    width: 6px;
-}
-
-.seven-seg-colon-dot {
-    width: 3px;
-    height: 3px;
-    border-radius: 2px;
-    background-color: transparent;
-}
-
-.seven-seg-colon-spacer {
-    height: 6px;
-}
-
-.seven-seg-colon.colon-off .seven-seg-colon-dot {
-    background-color: transparent;
-    box-shadow: none;
-}
-
-.seven-seg-ampm {
-    font-size: 0.65em;
+.seven-seg-label {
+    font-family: "DSEG7 Classic", monospace;
     font-weight: 700;
-    padding-left: 4px;
-    padding-bottom: 1px;
 }
 
 /* —— Keyboard layout (flat rectangular PNG flags) —— */

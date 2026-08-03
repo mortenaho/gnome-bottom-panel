@@ -323,8 +323,8 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
         clockGroup.add(clockLed);
 
         const clockThickness = this._spinRow(settings, 'clock-segment-thickness',
-            _('Segment thickness'),
-            _('Width of the lit seven-segment bars'),
+            _('Segment size'),
+            _('Size of the DSEG seven-segment digits'),
             1, 8, 1);
         clockGroup.add(clockThickness);
 

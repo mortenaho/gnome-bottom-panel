@@ -257,6 +257,7 @@ class BottomPanel extends St.Widget {
             ledColor: opts.clockLedColor,
             hourFormat: opts.clockHourFormat,
             thickness: opts.clockSegmentThickness,
+            extensionPath: opts.extensionPath ?? '',
         });
     }
 
@@ -347,6 +348,7 @@ class BottomPanel extends St.Widget {
                 ledColor: options.clockLedColor,
                 hourFormat: options.clockHourFormat,
                 thickness: options.clockSegmentThickness,
+                extensionPath: options.extensionPath ?? '',
             });
         }
 
