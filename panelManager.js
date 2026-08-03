@@ -162,7 +162,10 @@ export class PanelManager {
     }
 
     _onSettingsChanged() {
-        const options = getPanelOptions();
+        const options = {
+            ...getPanelOptions(),
+            extensionPath: _extensionPath,
+        };
 
         if (options.hideOverviewDash)
             this._chrome.hideOverviewDash();

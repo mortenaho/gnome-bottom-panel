@@ -159,8 +159,8 @@
 
     <key name="clock-segment-thickness" type="i">
       <default>2</default>
-      <summary>Seven-segment thickness</summary>
-      <description>Thickness of lit bars on the seven-segment clock, in pixels.</description>
+      <summary>Seven-segment size</summary>
+      <description>Size of the DSEG seven-segment digits (maps to font size).</description>
       <range min="1" max="8"/>
     </key>
 
