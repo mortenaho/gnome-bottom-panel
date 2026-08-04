@@ -60,11 +60,12 @@ export default class CustomNavbarExtension extends Extension {
             ...this._readOptions(),
         });
 
-        // First item(s) in the right box — before battery, network, Quick Settings, …
+        // Far right of the top bar — after battery, network, Quick Settings, …
+        const position = Main.panel._rightBox?.get_n_children?.() ?? -1;
         Main.panel.addToStatusArea(
             'custom-navbar',
             this._widget,
-            0,
+            position,
             'right');
     }
 
