@@ -4,6 +4,8 @@
  *
  * Critical: the flyout must stay mapped while an icon menu is open.
  * Hiding it unmaps the indicator and immediately kills its menu.
+ * Relayout must also avoid remove/re-add of icons that already sit in the
+ * correct parent — reparenting unmaps the actor and destroys open menus.
  */
 
 import Clutter from 'gi://Clutter';
@@ -14,6 +16,12 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {setMenuOpensUpward} from './systemTray.js';
+import {
+    applyBlurEffect,
+    applyThemeClasses,
+    buildFloatingChromeStyle,
+} from '../utils/theming.js';
+import {getPanelOptions} from '../utils/settings.js';
 
 const RESERVED_ROLES = new Set([
     'activities',
@@ -105,6 +113,24 @@ function isEllipsisOnly(indicator) {
     }
 }
 
+/**
+ * @param {Clutter.Actor} actor
+ * @param {number} x
+ * @param {number} y
+ * @returns {boolean}
+ */
+function actorContainsPoint(actor, x, y) {
+    if (!actor?.get_transformed_position)
+        return false;
+    try {
+        const [ax, ay] = actor.get_transformed_position();
+        const [aw, ah] = actor.get_transformed_size();
+        return x >= ax && y >= ay && x <= ax + aw && y <= ay + ah;
+    } catch (_e) {
+        return false;
+    }
+}
+
 export const AppIndicatorTray = GObject.registerClass(
 class AppIndicatorTray extends St.BoxLayout {
     /**
@@ -133,6 +159,9 @@ class AppIndicatorTray extends St.BoxLayout {
         this._origAddToStatusArea = null;
         this._flyoutOpen = false;
         this._stageClickId = 0;
+        this._blurEffect = null;
+        this._options = null;
+        this._dismissGuardUntil = 0;
 
         this._visibleBox = new St.BoxLayout({
             style_class: 'bottom-panel-app-tray-visible',
@@ -171,6 +200,8 @@ class AppIndicatorTray extends St.BoxLayout {
         this._flyout.add_child(this._overflowBox);
         Main.layoutManager.uiGroup.add_child(this._flyout);
 
+        this.applyVisuals(getPanelOptions());
+
         this._overflowButton.connect('clicked', () => {
             if (this._flyoutOpen)
                 this._closeFlyout();
@@ -187,6 +218,33 @@ class AppIndicatorTray extends St.BoxLayout {
         });
 
         this.connect('destroy', () => this._onDestroy());
+    }
+
+    /**
+     * Match flyout color / opacity / blur to the bottom panel chrome.
+     *
+     * @param {object} [options]
+     */
+    applyVisuals(options) {
+        this._options = options ? {...options} : getPanelOptions();
+        if (!this._flyout)
+            return;
+
+        applyThemeClasses(this._flyout, this._options);
+        // Floor opacity so icons stay readable on a very transparent dock.
+        this._flyout.set_style(buildFloatingChromeStyle(this._options, {
+            padding: '8px 10px',
+            borderRadius: 10,
+            minOpacity: 0.82,
+        }));
+        this._blurEffect = applyBlurEffect(
+            this._flyout,
+            !!this._options.enableBlur);
+
+        // Only reposition when mapped — measuring while hidden + set_size
+        // locks a near-zero allocation and icons vanish.
+        if (this._flyoutOpen && this._flyout.visible)
+            this._positionFlyout();
     }
 
     /**
@@ -216,16 +274,25 @@ class AppIndicatorTray extends St.BoxLayout {
             return;
 
         this._flyoutOpen = true;
+        // Map before chrome/layout so preferred sizes include the icons.
         this._flyout.show();
         this._raiseFlyout();
+        if (this._options)
+            this.applyVisuals(this._options);
+        this._ensureOverflowIconsVisible();
         this._positionFlyout();
         this._overflowIcon.icon_name = 'pan-down-symbolic';
         this._overflowButton.add_style_pseudo_class('active');
 
         // Skip the opening click so it is not treated as an outside dismiss.
+        this._dismissGuardUntil = GLib.get_monotonic_time() + 250 * 1000;
         GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-            if (this._flyoutOpen)
-                this._connectDismissHandlers();
+            if (!this._flyoutOpen)
+                return GLib.SOURCE_REMOVE;
+            // Second pass after St theme/allocation settles.
+            this._ensureOverflowIconsVisible();
+            this._positionFlyout();
+            this._connectDismissHandlers();
             return GLib.SOURCE_REMOVE;
         });
     }
@@ -264,12 +331,47 @@ class AppIndicatorTray extends St.BoxLayout {
         return false;
     }
 
+    /**
+     * Force overflow icons mapped and sized for flyout layout.
+     */
+    _ensureOverflowIconsVisible() {
+        const min = Math.max(16, this._iconSize);
+        for (const child of this._overflowBox.get_children()) {
+            try {
+                child.visible = true;
+                child.show?.();
+                child.opacity = 255;
+                this._applySize(child);
+                suppressTrayLabels(child);
+                // Panel buttons can report 0×0 outside the top bar.
+                if ((child.width ?? 0) < 2 || (child.height ?? 0) < 2) {
+                    child.set_size(min, min);
+                }
+            } catch (_e) {
+                // disposed
+            }
+        }
+    }
+
     _positionFlyout() {
+        if (!this._flyout?.visible)
+            return;
+
         const button = this._overflowButton;
+        // Drop any previous fixed size — otherwise get_preferred_* echoes
+        // a collapsed allocation from an earlier measure-while-hidden pass.
+        this._flyout.set_width(-1);
+        this._flyout.set_height(-1);
+
+        const iconMin = Math.max(16, this._iconSize);
+        const n = this._overflowBox.get_n_children();
         const [, natW] = this._flyout.get_preferred_width(-1);
         const [, natH] = this._flyout.get_preferred_height(-1);
-        const w = Math.max(1, Math.ceil(natW));
-        const h = Math.max(1, Math.ceil(natH));
+        // Padding (10+10 / 8+8) + spacing so an empty measure still fits icons.
+        const minW = Math.max(iconMin + 24, n * iconMin + Math.max(0, n - 1) * 8 + 24);
+        const minH = iconMin + 20;
+        const w = Math.max(minW, Math.ceil(natW));
+        const h = Math.max(minH, Math.ceil(natH));
         this._flyout.set_size(w, h);
 
         const [bx, by] = button.get_transformed_position();
@@ -293,11 +395,45 @@ class AppIndicatorTray extends St.BoxLayout {
 
     /**
      * Raise the flyout above siblings (Clutter no longer has raise_top).
+     * Menus must be raised above the flyout separately when they open.
      */
     _raiseFlyout() {
         const parent = this._flyout?.get_parent?.();
         if (parent && this._flyout)
             parent.set_child_above_sibling(this._flyout, null);
+    }
+
+    /**
+     * Keep the indicator menu above the flyout so pointer travel works.
+     *
+     * @param {object} menu
+     */
+    _raiseMenuAboveFlyout(menu) {
+        if (!menu || !this._flyout)
+            return;
+        try {
+            const bp = menu._boxPointer;
+            const actors = [
+                bp,
+                bp?.bin,
+                bp?.actor,
+                menu.actor,
+                menu.box?.get_parent?.(),
+            ].filter(Boolean);
+
+            for (const actor of actors) {
+                const parent = actor.get_parent?.();
+                if (!parent)
+                    continue;
+                if (parent === this._flyout.get_parent())
+                    parent.set_child_above_sibling(actor, this._flyout);
+                else
+                    parent.set_child_above_sibling(actor, null);
+                break;
+            }
+        } catch (_e) {
+            // ignore
+        }
     }
 
     _connectDismissHandlers() {
@@ -337,19 +473,23 @@ class AppIndicatorTray extends St.BoxLayout {
             type !== Clutter.EventType.TOUCH_BEGIN)
             return Clutter.EVENT_PROPAGATE;
 
-        const source = event.get_source();
-        if (!source)
+        if (GLib.get_monotonic_time() < this._dismissGuardUntil)
             return Clutter.EVENT_PROPAGATE;
+
+        const source = event.get_source();
+        const [x, y] = event.get_coords();
 
         // Keep flyout open for clicks on icons / flyout chrome.
-        if (this._flyout.contains(source))
+        if (this._isOnFlyoutChrome(source, x, y)) {
+            // Primary-click menus open after the double-click delay; guard
+            // so a delayed open is not raced by an outside dismiss.
+            this._dismissGuardUntil =
+                GLib.get_monotonic_time() + 600 * 1000;
             return Clutter.EVENT_PROPAGATE;
-
-        if (this._overflowButton.contains(source))
-            return Clutter.EVENT_PROPAGATE;
+        }
 
         // Clicks inside an open indicator menu — leave flyout mapped.
-        if (this._isInIndicatorMenu(source))
+        if (this._isInIndicatorMenu(source, x, y))
             return Clutter.EVENT_PROPAGATE;
 
         // Outside: close only if no icon menu is using the flyout as anchor.
@@ -360,22 +500,60 @@ class AppIndicatorTray extends St.BoxLayout {
     }
 
     /**
-     * @param {Clutter.Actor} actor
+     * @param {Clutter.Actor|null} actor
+     * @param {number} x
+     * @param {number} y
      * @returns {boolean}
      */
-    _isInIndicatorMenu(actor) {
+    _isOnFlyoutChrome(actor, x, y) {
+        try {
+            if (actor) {
+                if (this._flyout?.contains?.(actor))
+                    return true;
+                if (this._overflowButton?.contains?.(actor))
+                    return true;
+            }
+        } catch (_e) {
+            // ignore
+        }
+        return actorContainsPoint(this._flyout, x, y) ||
+            actorContainsPoint(this._overflowButton, x, y);
+    }
+
+    /**
+     * @param {Clutter.Actor|null} actor
+     * @param {number} [x]
+     * @param {number} [y]
+     * @returns {boolean}
+     */
+    _isInIndicatorMenu(actor, x = NaN, y = NaN) {
         for (const {indicator} of this._icons.values()) {
             const menu = indicator?.menu;
             if (!menu || menu.isDummy)
                 continue;
             try {
                 const bp = menu._boxPointer;
-                if (menu.actor?.contains?.(actor) ||
-                    menu.box?.contains?.(actor) ||
-                    bp?.bin?.contains?.(actor) ||
-                    bp?.contains?.(actor) ||
-                    bp?.actor?.contains?.(actor))
-                    return true;
+                const nodes = [
+                    menu.actor,
+                    menu.box,
+                    bp,
+                    bp?.bin,
+                    bp?.actor,
+                ].filter(Boolean);
+
+                if (actor) {
+                    for (const node of nodes) {
+                        if (node.contains?.(actor))
+                            return true;
+                    }
+                }
+
+                if (Number.isFinite(x) && Number.isFinite(y)) {
+                    for (const node of nodes) {
+                        if (actorContainsPoint(node, x, y))
+                            return true;
+                    }
+                }
             } catch (_e) {
                 // ignore
             }
@@ -420,6 +598,13 @@ class AppIndicatorTray extends St.BoxLayout {
         const {statusArea} = Main.panel;
         if (!statusArea)
             return;
+
+        // Reparenting while a menu is open unmaps the indicator and kills it.
+        if (this._anyIndicatorMenuOpen()) {
+            if (this._flyoutOpen)
+                this._positionFlyout();
+            return;
+        }
 
         const seen = new Set();
         for (const role of Object.keys(statusArea)) {
@@ -477,12 +662,19 @@ class AppIndicatorTray extends St.BoxLayout {
             this._menuSides.set(role, indicator.menu._arrowSide);
             setMenuOpensUpward(indicator.menu);
 
-            // Never close the flyout when a menu opens — hiding unmaps the
-            // indicator and kills its menu. Stay open until outside click.
+            // Keep flyout mapped while the menu is open, and keep the menu
+            // stacked above the flyout so the pointer can reach it.
             const id = indicator.menu.connect('open-state-changed',
-                (_menu, open) => {
-                    if (open)
-                        this._raiseFlyout();
+                (menu, open) => {
+                    if (open) {
+                        this._dismissGuardUntil =
+                            GLib.get_monotonic_time() + 600 * 1000;
+                        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                            if (menu.isOpen)
+                                this._raiseMenuAboveFlyout(menu);
+                            return GLib.SOURCE_REMOVE;
+                        });
+                    }
                 });
             this._menuOpenIds.set(role, id);
         }
@@ -573,12 +765,11 @@ class AppIndicatorTray extends St.BoxLayout {
         this._icons.delete(role);
     }
 
+    /**
+     * Place icons into visible / overflow boxes without reparenting actors
+     * that are already in the correct parent (reparent kills open menus).
+     */
     _relayoutIcons() {
-        for (const child of [...this._visibleBox.get_children()])
-            this._visibleBox.remove_child(child);
-        for (const child of [...this._overflowBox.get_children()])
-            this._overflowBox.remove_child(child);
-
         const roles = [...this._icons.keys()].sort();
         const ordered = roles
             .map(r => this._icons.get(r))
@@ -586,31 +777,49 @@ class AppIndicatorTray extends St.BoxLayout {
 
         const visible = ordered.slice(0, this._maxVisible);
         const hidden = ordered.slice(this._maxVisible);
+        const visibleSet = new Set(visible.map(e => e.container));
+        const hiddenSet = new Set(hidden.map(e => e.container));
 
-        for (const entry of visible) {
-            const {container} = entry;
-            const parent = container.get_parent();
-            if (parent)
-                parent.remove_child(container);
-            this._visibleBox.add_child(container);
-            this._applySize(container);
-            suppressTrayLabels(container);
+        for (const child of [...this._visibleBox.get_children()]) {
+            if (!visibleSet.has(child))
+                this._visibleBox.remove_child(child);
+        }
+        for (const child of [...this._overflowBox.get_children()]) {
+            if (!hiddenSet.has(child))
+                this._overflowBox.remove_child(child);
         }
 
-        for (const entry of hidden) {
-            const {container} = entry;
-            const parent = container.get_parent();
-            if (parent)
-                parent.remove_child(container);
-            this._overflowBox.add_child(container);
-            this._applySize(container);
-            suppressTrayLabels(container);
-        }
+        visible.forEach((entry, index) => {
+            this._ensureInBox(this._visibleBox, entry.container, index);
+            this._applySize(entry.container);
+            suppressTrayLabels(entry.container);
+        });
+
+        hidden.forEach((entry, index) => {
+            this._ensureInBox(this._overflowBox, entry.container, index);
+            this._applySize(entry.container);
+            suppressTrayLabels(entry.container);
+        });
 
         const showChevron = hidden.length > 0;
         this._overflowButton.visible = showChevron;
         if (!showChevron && this._flyoutOpen && !this._anyIndicatorMenuOpen())
             this._closeFlyout();
+    }
+
+    /**
+     * @param {St.BoxLayout} box
+     * @param {Clutter.Actor} container
+     * @param {number} index
+     */
+    _ensureInBox(box, container, index) {
+        const parent = container.get_parent();
+        // Already in the right box: do not reparent (unmaps → kills menus).
+        if (parent === box)
+            return;
+        parent?.remove_child(container);
+        box.insert_child_at_index(
+            container, Math.min(index, box.get_n_children()));
     }
 
     /**
@@ -649,8 +858,12 @@ class AppIndicatorTray extends St.BoxLayout {
         for (const role of [...this._icons.keys()])
             this._release(role);
 
-        this._flyout?.destroy();
+        if (this._flyout) {
+            applyBlurEffect(this._flyout, false);
+            this._flyout.destroy();
+        }
         this._flyout = null;
+        this._blurEffect = null;
         this._overflowIcon = null;
     }
 });

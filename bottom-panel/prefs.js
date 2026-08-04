@@ -108,34 +108,77 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
         look.add(this._switchRow(settings, 'enable-blur', _('Background blur'),
             _('Uses Shell.BlurEffect when the compositor supports it')));
 
-        page.add(this._buildSizeProfileGroup(settings, 'small'));
-        page.add(this._buildSizeProfileGroup(settings, 'large'));
+        const activeProfile = this._activeSizeProfile(settings);
+        const first = activeProfile === 'large' ? 'large' : 'small';
+        const second = first === 'large' ? 'small' : 'large';
+        page.add(this._buildSizeProfileGroup(settings, first, activeProfile));
+        page.add(this._buildSizeProfileGroup(settings, second, activeProfile));
 
         const threshold = new Adw.PreferencesGroup({
             title: _('Monitor size switch'),
-            description: _('Width at or above this uses the large profile'),
+            description: _('Width×scale at or above this uses the large profile'),
         });
         page.add(threshold);
         threshold.add(this._spinRow(settings, 'large-monitor-min-width',
             _('Large monitor from width'),
-            _('Compares width×scale — e.g. 1920 laptop stays small; 2560+ ultrawide/4K uses large'),
+            _('e.g. 1920 laptop stays small; 2560+ ultrawide/4K uses large'),
             1280, 7680, 80));
 
         return page;
     }
 
     /**
+     * Which size profile the primary monitor currently uses.
+     *
+     * @param {Gio.Settings} settings
+     * @returns {'small'|'large'}
+     */
+    _activeSizeProfile(settings) {
+        const threshold = settings.get_int('large-monitor-min-width');
+        try {
+            const display = Gdk.Display.get_default();
+            const monitors = display?.get_monitors?.();
+            const n = monitors?.get_n_items?.() ?? 0;
+            if (n > 0) {
+                const primary = display.get_primary_monitor?.() ??
+                    monitors.get_item(0);
+                if (primary) {
+                    const g = primary.get_geometry();
+                    const scale = primary.get_scale_factor?.() || 1;
+                    if (Math.round(g.width * scale) >= threshold)
+                        return 'large';
+                }
+            }
+        } catch (_e) {
+            // Fall through — assume small.
+        }
+        return 'small';
+    }
+
+    /**
      * @param {Gio.Settings} settings
      * @param {'small'|'large'} profile
+     * @param {'small'|'large'} activeProfile
      * @returns {Adw.PreferencesGroup}
      */
-    _buildSizeProfileGroup(settings, profile) {
+    _buildSizeProfileGroup(settings, profile, activeProfile) {
         const large = profile === 'large';
+        const active = profile === activeProfile;
         const group = new Adw.PreferencesGroup({
-            title: large ? _('Large monitors') : _('Small monitors'),
-            description: large
-                ? _('Ultrawide / 4K and other wide displays')
-                : _('Laptops and regular Full HD monitors'),
+            title: large
+                ? (active
+                    ? _('Large monitors (in use)')
+                    : _('Large monitors'))
+                : (active
+                    ? _('Small monitors (in use)')
+                    : _('Small monitors')),
+            description: active
+                ? (large
+                    ? _('This display uses these sizes — change icons here')
+                    : _('This display uses these sizes — change icons here'))
+                : (large
+                    ? _('Used when width×scale ≥ the threshold below')
+                    : _('Used on laptops / narrower displays')),
         });
 
         const heightKey = large ? 'panel-height-large' : 'panel-height';

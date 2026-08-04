@@ -210,19 +210,16 @@
     background-color: rgba(255, 255, 255, 0.10);
 }
 
-/* Custom flyout (not PopupMenu) so tray icons keep their own menus */
+/* Custom flyout (not PopupMenu) so tray icons keep their own menus.
+   Background color / opacity / blur come from JS (panel chrome settings). */
 .bottom-panel-app-tray-flyout {
     spacing: 0;
     padding: 8px 10px;
     border-radius: 10px;
-    background-color: rgba(255, 255, 255, 0.95);
-    border: 1px solid rgba(0, 0, 0, 0.08);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
 }
 
-.bottom-panel-dark .bottom-panel-app-tray-flyout {
-    background-color: rgba(40, 40, 40, 0.96);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+.bottom-panel-app-tray-flyout.bottom-panel-dark {
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
 }
 
@@ -231,7 +228,20 @@
     padding: 2px;
 }
 
-/* SNI text labels ("...") — icon-only tray like Windows */
+/* Keep overflow icons allocatable outside the top bar. */
+.bottom-panel-app-tray-overflow-box > * {
+    min-width: 16px;
+    min-height: 16px;
+    opacity: 1;
+}
+
+.bottom-panel-app-tray-overflow-box StIcon,
+.bottom-panel-app-tray-flyout StIcon {
+    opacity: 1;
+}
+
+/* SNI text labels ("...") — icon-only tray like Windows.
+   Do not target StIcon; only collapse text labels. */
 .bottom-panel-app-tray-flyout StLabel,
 .bottom-panel-app-tray-visible StLabel,
 .bottom-panel-app-tray-overflow-box StLabel {

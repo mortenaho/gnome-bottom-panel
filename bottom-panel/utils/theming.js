@@ -114,21 +114,17 @@ export function watchColorScheme(callback) {
 }
 
 /**
- * Build inline CSS for panel geometry / opacity so runtime settings
- * override stylesheet defaults without rewriting the CSS file.
+ * Shared panel chrome colors (background + border) from user settings /
+ * light-dark preference. Used by the dock and floating surfaces (flyouts).
  *
  * @param {{
- *   panelHeight: number,
- *   borderRadius: number,
  *   panelOpacity: number,
- *   panelSpacing: number,
- *   panelMargin: number,
  *   useCustomPanelColor?: boolean,
  *   panelColor?: string,
  * }} options
- * @returns {string}
+ * @returns {{bg: string, border: string, dark: boolean}}
  */
-export function buildPanelInlineStyle(options) {
+export function getPanelChromeColors(options) {
     const customRgb = options.useCustomPanelColor
         ? parseHexColor(options.panelColor)
         : null;
@@ -149,6 +145,26 @@ export function buildPanelInlineStyle(options) {
         ? 'rgba(255, 255, 255, 0.06)'
         : 'rgba(0, 0, 0, 0.08)';
 
+    return {bg, border, dark};
+}
+
+/**
+ * Build inline CSS for panel geometry / opacity so runtime settings
+ * override stylesheet defaults without rewriting the CSS file.
+ *
+ * @param {{
+ *   panelHeight: number,
+ *   borderRadius: number,
+ *   panelOpacity: number,
+ *   panelSpacing: number,
+ *   panelMargin: number,
+ *   useCustomPanelColor?: boolean,
+ *   panelColor?: string,
+ * }} options
+ * @returns {string}
+ */
+export function buildPanelInlineStyle(options) {
+    const {bg, border} = getPanelChromeColors(options);
     const radius = options.borderRadius;
     return [
         `height: ${options.panelHeight}px;`,
@@ -157,6 +173,35 @@ export function buildPanelInlineStyle(options) {
         radius > 0 ? `border: 1px solid ${border};` : `border-top: 1px solid ${border};`,
         `padding-left: ${options.panelSpacing}px;`,
         `padding-right: ${options.panelSpacing}px;`,
+    ].join(' ');
+}
+
+/**
+ * Inline style for floating chrome (tray overflow flyout, etc.).
+ * Matches panel color / opacity / border; geometry stays flyout-specific.
+ *
+ * `minOpacity` floors panel opacity so tray icons stay readable when the
+ * dock itself is nearly transparent.
+ *
+ * @param {{
+ *   panelOpacity: number,
+ *   useCustomPanelColor?: boolean,
+ *   panelColor?: string,
+ * }} options
+ * @param {{padding?: string, borderRadius?: number, minOpacity?: number}} [chrome]
+ * @returns {string}
+ */
+export function buildFloatingChromeStyle(options, chrome = {}) {
+    const minOpacity = Math.max(0, Math.min(1, chrome.minOpacity ?? 0));
+    const opacity = Math.max(minOpacity, Number(options.panelOpacity) || 0);
+    const {bg, border} = getPanelChromeColors({...options, panelOpacity: opacity});
+    const padding = chrome.padding ?? '8px 10px';
+    const radius = chrome.borderRadius ?? 10;
+    return [
+        `padding: ${padding};`,
+        `border-radius: ${radius}px;`,
+        `background-color: ${bg};`,
+        `border: 1px solid ${border};`,
     ].join(' ');
 }
 

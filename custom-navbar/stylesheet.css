@@ -1,0 +1,39 @@
+/* Custom Navbar — flag + seven-segment clock in the stock top bar */
+
+.custom-navbar-widget {
+    -natural-hpadding: 6px;
+    -minimum-hpadding: 4px;
+}
+
+.custom-navbar-box {
+    spacing: 8px;
+}
+
+.custom-navbar-flag-button,
+.custom-navbar-clock-button {
+    border-radius: 4px;
+    padding: 2px 4px;
+    background-color: transparent;
+}
+
+.custom-navbar-flag-button:hover,
+.custom-navbar-clock-button:hover {
+    background-color: rgba(255, 255, 255, 0.10);
+}
+
+.custom-navbar-flag-button:active,
+.custom-navbar-clock-button:active {
+    background-color: rgba(255, 255, 255, 0.16);
+}
+
+.custom-navbar-flag {
+    border-radius: 2px;
+}
+
+.custom-navbar-clock-label {
+    font-feature-settings: "tnum";
+}
+
+.custom-navbar-kb-menu-row {
+    spacing: 8px;
+}

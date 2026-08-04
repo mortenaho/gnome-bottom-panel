@@ -500,16 +500,7 @@ export const PanelDash = GObject.registerClass(
          * @param {number} _maxHeight
          */
         setMaxSize(_maxWidth, _maxHeight) {
-            const target = this._bpParams.iconSize;
-            if (this.iconSize !== target) {
-                this.iconSize = target;
-                this._showAppsIcon?.icon?.setIconSize?.(target);
-                for (const item of this._box.get_children()) {
-                    const icon = item.child?.icon ?? item.child?._icon;
-                    icon?.setIconSize?.(target);
-                }
-            }
-            this._queueRedisplay();
+            this.setIconSize(this._bpParams.iconSize);
         }
 
         /**
@@ -518,8 +509,15 @@ export const PanelDash = GObject.registerClass(
          * @param {number} size
          */
         setIconSize(size) {
-            this._bpParams.iconSize = size;
-            this.setMaxSize(-1, -1);
+            const next = Math.max(16, Math.round(Number(size) || 32));
+            this._bpParams.iconSize = next;
+            this.iconSize = next;
+            this._showAppsIcon?.icon?.setIconSize?.(next);
+            for (const item of this._box?.get_children() ?? []) {
+                const icon = item.child?.icon ?? item.child?._icon;
+                icon?.setIconSize?.(next);
+            }
+            this._queueRedisplay?.();
         }
 
         destroy() {
@@ -610,7 +608,7 @@ export const Taskbar = GObject.registerClass(
          */
         updateParams(updates) {
             Object.assign(this._params, updates);
-            if (updates.iconSize && this._dash)
+            if (updates.iconSize !== undefined && this._dash)
                 this._dash.setIconSize(updates.iconSize);
             this._dash?._refilterItems?.();
 

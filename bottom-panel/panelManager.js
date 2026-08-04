@@ -32,6 +32,7 @@ export class PanelManager {
         this._settingsDisposer = null;
         this._enabled = false;
         this._rebuildTimeout = 0;
+        this._settingsApplyTimeout = 0;
     }
 
     enable() {
@@ -109,6 +110,10 @@ export class PanelManager {
             GLib.Source.remove(this._rebuildTimeout);
             this._rebuildTimeout = 0;
         }
+        if (this._settingsApplyTimeout) {
+            GLib.Source.remove(this._settingsApplyTimeout);
+            this._settingsApplyTimeout = 0;
+        }
 
         this._settingsDisposer?.();
         this._settingsDisposer = null;
@@ -178,6 +183,20 @@ export class PanelManager {
     }
 
     _onSettingsChanged() {
+        // Batch rapid SpinRow / linked height+icon writes into one apply.
+        if (this._settingsApplyTimeout) {
+            GLib.Source.remove(this._settingsApplyTimeout);
+            this._settingsApplyTimeout = 0;
+        }
+        this._settingsApplyTimeout = GLib.timeout_add(
+            GLib.PRIORITY_DEFAULT, 50, () => {
+                this._settingsApplyTimeout = 0;
+                this._applySettingsNow();
+                return GLib.SOURCE_REMOVE;
+            });
+    }
+
+    _applySettingsNow() {
         const shared = getPanelOptions();
 
         if (shared.hideOverviewDash)

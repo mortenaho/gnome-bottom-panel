@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.custom-navbar"
+          path="/org/gnome/shell/extensions/custom-navbar/">
+
+    <key name="led-color" type="s">
+      <default>'white'</default>
+      <summary>Seven-segment LED color</summary>
+      <description>Preset name (white, red, green, blue, amber, cyan) or #rrggbb.</description>
+    </key>
+
+    <key name="hour-format" type="s">
+      <default>'24'</default>
+      <summary>Clock hour format</summary>
+      <description>Either "12" or "24".</description>
+    </key>
+
+    <key name="colon-blink" type="b">
+      <default>true</default>
+      <summary>Blink colon</summary>
+      <description>Toggle the colon visibility every half second.</description>
+    </key>
+
+    <key name="flag-height" type="i">
+      <default>18</default>
+      <range min="12" max="32"/>
+      <summary>Flag height</summary>
+      <description>Keyboard flag height in logical pixels.</description>
+    </key>
+
+    <key name="clock-thickness" type="i">
+      <default>3</default>
+      <range min="1" max="8"/>
+      <summary>Segment thickness</summary>
+      <description>Maps to seven-segment font size.</description>
+    </key>
+  </schema>
+</schemalist>

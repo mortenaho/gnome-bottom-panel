@@ -464,6 +464,9 @@ class BottomPanel extends St.Widget {
         this._blurEffect = applyBlurEffect(
             this._shell,
             this._options.enableBlur);
+
+        // Overflow flyout uses the same color / opacity / blur as the dock.
+        this._appTray?.applyVisuals?.(this._options);
     }
 
     _positionOnMonitor() {
