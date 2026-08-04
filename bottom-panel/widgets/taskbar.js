@@ -203,6 +203,7 @@ export const PanelDash = GObject.registerClass(
         /**
          * @param {{
          *   iconSize: number,
+         *   iconPadding?: number,
          *   showFavorites: boolean,
          *   showRunningApps: boolean,
          *   showShowAppsButton: boolean,
@@ -214,10 +215,14 @@ export const PanelDash = GObject.registerClass(
         _init(params) {
             super._init();
 
-            this._bpParams = params;
+            this._bpParams = {
+                iconPadding: 4,
+                ...params,
+            };
             this._monitorIndex = params.monitorIndex;
             this.iconSize = params.iconSize;
             this._scrollView = null;
+            this._lockingStripWidth = false;
 
             this.add_style_class_name('bottom-panel-dash');
 
@@ -236,7 +241,11 @@ export const PanelDash = GObject.registerClass(
             this._installScrollView();
 
             this._box.connectObject(
-                'child-added', (_a, item) => this._onItemAdded(item),
+                'child-added', (_a, item) => {
+                    this._onItemAdded(item);
+                    this._queueLockIconStripWidth();
+                },
+                'child-removed', () => this._queueLockIconStripWidth(),
                 this);
 
             // Restyle items already present.
@@ -244,6 +253,7 @@ export const PanelDash = GObject.registerClass(
                 this._onItemAdded(child);
 
             this._hookAppFilters();
+            this._queueLockIconStripWidth();
         }
 
         /**
@@ -263,11 +273,16 @@ export const PanelDash = GObject.registerClass(
 
             try {
                 parent.remove_child(box);
+                // Keep the full icon strip; ScrollView clips/scrolls the overflow.
                 box.clip_to_allocation = false;
+                box.x_expand = false;
+                box.x_align = Clutter.ActorAlign.START;
 
                 this._scrollContent = new St.BoxLayout({
                     style_class: 'bottom-panel-dash-scroll-content',
                     y_expand: true,
+                    x_expand: false,
+                    x_align: Clutter.ActorAlign.START,
                     y_align: Clutter.ActorAlign.CENTER,
                 });
                 this._scrollContent.add_child(box);
@@ -276,10 +291,12 @@ export const PanelDash = GObject.registerClass(
                     style_class: 'bottom-panel-dash-scroll',
                     x_expand: true,
                     y_expand: true,
+                    x_align: Clutter.ActorAlign.FILL,
                     y_align: Clutter.ActorAlign.CENTER,
                     hscrollbar_policy: St.PolicyType.EXTERNAL,
                     vscrollbar_policy: St.PolicyType.NEVER,
                     overlay_scrollbars: true,
+                    clip_to_allocation: true,
                 });
                 try {
                     this._scrollView.enable_mouse_scrolling = false;
@@ -295,6 +312,12 @@ export const PanelDash = GObject.registerClass(
                 parent.insert_child_at_index(this._scrollView, 0);
                 this._scrollView.connect('scroll-event',
                     this._onDashScroll.bind(this));
+
+                // DashIconsLayout reports min-width 0, so without locking the
+                // strip to its natural width the viewport shrinks icons away
+                // instead of scrolling. Re-lock after layout settles.
+                box.connect('notify::allocation',
+                    () => this._queueLockIconStripWidth());
             } catch (e) {
                 console.error(`Bottom Panel: dash scroll setup failed: ${e}`);
                 // Fall back to the stock non-scrolling layout.
@@ -304,6 +327,55 @@ export const PanelDash = GObject.registerClass(
                     box.get_parent()?.remove_child(box);
                     parent.insert_child_at_index(box, 0);
                 }
+            }
+        }
+
+        /**
+         * Debounce strip-width locking across rapid child/layout updates.
+         */
+        _queueLockIconStripWidth() {
+            if (this._lockStripIdle)
+                return;
+            this._lockStripIdle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                this._lockStripIdle = 0;
+                this._lockIconStripWidth();
+                return GLib.SOURCE_REMOVE;
+            });
+        }
+
+        /**
+         * Force the icon strip to its fixed-size natural width so overflow
+         * scrolls at the trailing edge instead of DashIconsLayout shrinking
+         * icons to fit (or to zero).
+         */
+        _lockIconStripWidth() {
+            if (this._lockingStripWidth || !this._box || !this._scrollView)
+                return;
+
+            this._lockingStripWidth = true;
+            try {
+                // Sum visible children so we don't depend on DashIconsLayout's
+                // min-width 0 (and avoid clearing width every pass).
+                let width = 0;
+                const children = this._box.get_children().filter(c => c.visible);
+                const spacing = this._box.get_theme_node?.()
+                    ?.get_length?.('spacing') ?? 0;
+                for (let i = 0; i < children.length; i++) {
+                    const [, nat] = children[i].get_preferred_width(-1);
+                    width += Math.ceil(nat);
+                    if (i > 0)
+                        width += spacing;
+                }
+                if (width < 1)
+                    width = 1;
+
+                if (Math.abs(this._box.width - width) > 0.5)
+                    this._box.set_width(width);
+                if (this._scrollContent &&
+                    Math.abs(this._scrollContent.width - width) > 0.5)
+                    this._scrollContent.set_width(width);
+            } finally {
+                this._lockingStripWidth = false;
             }
         }
 
@@ -457,6 +529,7 @@ export const PanelDash = GObject.registerClass(
                 this._separator.visible = showFavorites && showRunning;
 
             this.updateIconGeometries();
+            this._queueLockIconStripWidth();
         }
 
         _onItemAdded(item) {
@@ -464,6 +537,7 @@ export const PanelDash = GObject.registerClass(
                 return;
 
             item.child.add_style_class_name('bottom-panel-app-icon');
+            this._applyIconPadding(item.child);
 
             const icon = item.child.icon ?? item.child._icon;
             icon?.setIconSize?.(this._bpParams.iconSize);
@@ -487,10 +561,32 @@ export const PanelDash = GObject.registerClass(
                         const labelHeight = item.label.height || 20;
                         item.label.y = stageY - labelHeight - 8;
                         return GLib.SOURCE_REMOVE;
-                       
                     });
                 }, this);
             }
+        }
+
+        /**
+         * @param {Clutter.Actor} actor
+         */
+        _applyIconPadding(actor) {
+            const pad = Math.max(0, Math.min(16,
+                Math.round(Number(this._bpParams.iconPadding) || 0)));
+            actor.set_style(`padding: ${pad}px;`);
+        }
+
+        /**
+         * @param {number} padding
+         */
+        setIconPadding(padding) {
+            this._bpParams.iconPadding = Math.max(0, Math.min(16,
+                Math.round(Number(padding) || 0)));
+            for (const item of this._box?.get_children() ?? []) {
+                if (item.child)
+                    this._applyIconPadding(item.child);
+            }
+            this._queueLockIconStripWidth();
+            this._queueRedisplay?.();
         }
 
         /**
@@ -517,10 +613,15 @@ export const PanelDash = GObject.registerClass(
                 const icon = item.child?.icon ?? item.child?._icon;
                 icon?.setIconSize?.(next);
             }
+            this._queueLockIconStripWidth();
             this._queueRedisplay?.();
         }
 
         destroy() {
+            if (this._lockStripIdle) {
+                GLib.Source.remove(this._lockStripIdle);
+                this._lockStripIdle = 0;
+            }
             global.workspace_manager.disconnectObject(this);
             global.display.disconnectObject(this);
             this._box?.disconnectObject(this);
@@ -542,14 +643,18 @@ export const Taskbar = GObject.registerClass(
                 reactive: true,
                 // Expand so the panel can shrink us when many apps are open;
                 // PanelDash scrolls internally instead of clipping icons.
+                // Pack from the start so leftover room stays at the trailing end.
                 x_expand: true,
                 y_expand: true,
                 y_align: Clutter.ActorAlign.CENTER,
-                x_align: Clutter.ActorAlign.CENTER,
+                x_align: Clutter.ActorAlign.FILL,
                 clip_to_allocation: true,
             });
 
-            this._params = params;
+            this._params = {
+                iconPadding: 4,
+                ...params,
+            };
             this._dash = null;
 
             // Defer Dash construction slightly so AppSystem favorites are ready.
@@ -570,12 +675,14 @@ export const Taskbar = GObject.registerClass(
 
             container.x_expand = true;
             container.y_expand = true;
+            container.x_align = Clutter.ActorAlign.FILL;
             this.add_child(container);
             this._dashContainer = container;
             this.setDirection(this._params.direction);
 
             this.connectObject('notify::allocation', () => {
                 this._dash?.updateIconGeometries?.();
+                this._dash?._queueLockIconStripWidth?.();
             }, this);
         }
 
@@ -610,6 +717,8 @@ export const Taskbar = GObject.registerClass(
             Object.assign(this._params, updates);
             if (updates.iconSize !== undefined && this._dash)
                 this._dash.setIconSize(updates.iconSize);
+            if (updates.iconPadding !== undefined && this._dash)
+                this._dash.setIconPadding(updates.iconPadding);
             this._dash?._refilterItems?.();
 
             if (updates.direction !== undefined)

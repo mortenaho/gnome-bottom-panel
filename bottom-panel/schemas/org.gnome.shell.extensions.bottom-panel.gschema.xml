@@ -6,7 +6,7 @@
     <key name="panel-height" type="i">
       <default>48</default>
       <summary>Panel height (small monitors)</summary>
-      <description>Panel height on small monitors, in logical pixels. Should be at least icon-size + 8.</description>
+      <description>Panel height on small monitors, in logical pixels. Should be at least icon-size + 2×icon-padding.</description>
       <range min="32" max="96"/>
     </key>
 
@@ -15,6 +15,13 @@
       <summary>App icon size (small monitors)</summary>
       <description>Taskbar icon size on small monitors. Prefer 16, 22, 24, 32, 48, or 64 for sharp icons.</description>
       <range min="16" max="64"/>
+    </key>
+
+    <key name="icon-padding" type="i">
+      <default>4</default>
+      <summary>Taskbar icon padding</summary>
+      <description>Padding around each taskbar app icon, in logical pixels (applied on all sides). Panel height should be at least icon-size + 2× this value.</description>
+      <range min="0" max="16"/>
     </key>
 
     <key name="tray-icon-size" type="i">

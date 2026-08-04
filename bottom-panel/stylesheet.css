@@ -95,6 +95,7 @@
 
 .bottom-panel-app-icon {
     border-radius: 6px;
+    /* Default; live value comes from icon-padding via inline style */
     padding: 4px;
     transition-duration: 100ms;
 }

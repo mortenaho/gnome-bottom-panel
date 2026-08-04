@@ -54,6 +54,7 @@ export class PanelManager {
             this._settingsDisposer = onSettingsChanged([
                 'panel-height',
                 'icon-size',
+                'icon-padding',
                 'tray-icon-size',
                 'panel-height-large',
                 'icon-size-large',

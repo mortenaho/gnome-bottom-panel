@@ -251,10 +251,33 @@ export function applyBlurEffect(actor, enabled) {
 }
 
 /**
- * Vertical CSS padding on `.bottom-panel-app-icon` (top + bottom).
- * Icons must leave at least this much room inside the panel height.
+ * Default per-side CSS padding on `.bottom-panel-app-icon`.
+ * Vertical room needed inside the panel is `2 * iconPadding`.
  */
-export const TASKBAR_ICON_PAD = 8;
+export const DEFAULT_ICON_PADDING = 4;
+
+/** Default total vertical pad (top + bottom) at DEFAULT_ICON_PADDING. */
+export const TASKBAR_ICON_PAD = DEFAULT_ICON_PADDING * 2;
+
+/**
+ * Clamp icon padding to the schema range.
+ *
+ * @param {number} iconPadding
+ * @returns {number}
+ */
+export function clampIconPadding(iconPadding) {
+    return Math.max(0, Math.min(16, Math.round(Number(iconPadding) || 0)));
+}
+
+/**
+ * Total vertical padding (top + bottom) for taskbar icons.
+ *
+ * @param {number} [iconPadding]
+ * @returns {number}
+ */
+export function taskbarIconPad(iconPadding = DEFAULT_ICON_PADDING) {
+    return clampIconPadding(iconPadding) * 2;
+}
 
 /**
  * Scale a logical pixel value by the monitor's scale factor.
@@ -277,12 +300,14 @@ export function scaleForMonitor(logicalPx, monitorIndex) {
  *
  * @param {number} iconSize
  * @param {number} panelHeight
+ * @param {number} [iconPadding]
  * @returns {number}
  */
-export function fitIconSize(iconSize, panelHeight) {
+export function fitIconSize(iconSize, panelHeight, iconPadding = DEFAULT_ICON_PADDING) {
     const size = Math.max(16, Math.round(Number(iconSize) || 32));
     const height = Math.max(32, Math.round(Number(panelHeight) || 48));
-    return Math.min(size, Math.max(16, height - TASKBAR_ICON_PAD));
+    const pad = taskbarIconPad(iconPadding);
+    return Math.min(size, Math.max(16, height - pad));
 }
 
 /**
@@ -290,12 +315,13 @@ export function fitIconSize(iconSize, panelHeight) {
  *
  * @param {number} panelHeight
  * @param {number} iconSize
+ * @param {number} [iconPadding]
  * @returns {number}
  */
-export function fitPanelHeight(panelHeight, iconSize) {
+export function fitPanelHeight(panelHeight, iconSize, iconPadding = DEFAULT_ICON_PADDING) {
     const height = Math.max(32, Math.round(Number(panelHeight) || 48));
     const size = Math.max(16, Math.round(Number(iconSize) || 32));
-    return Math.max(height, size + TASKBAR_ICON_PAD);
+    return Math.max(height, size + taskbarIconPad(iconPadding));
 }
 
 /**

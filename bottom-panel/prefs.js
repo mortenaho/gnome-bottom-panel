@@ -186,11 +186,17 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
         const trayKey = large ? 'tray-icon-size-large' : 'tray-icon-size';
 
         group.add(this._spinRow(settings, heightKey, _('Panel height'),
-            _('Logical pixels; at least icon size + 8'),
+            _('Logical pixels; at least icon size + 2× icon padding'),
             32, 96, 1));
         group.add(this._spinRow(settings, iconKey, _('Icon size'),
             _('Prefer 16, 22, 24, 32, 48, or 64 for sharp icons'),
             16, 64, 1));
+        // Shared across size profiles — add once on the active/first group only.
+        if (active) {
+            group.add(this._spinRow(settings, 'icon-padding', _('Icon padding'),
+                _('Space around each taskbar icon (0–16)'),
+                0, 16, 1));
+        }
         group.add(this._spinRow(settings, trayKey, _('Tray icon size'),
             _('System indicators and keyboard flag height'),
             12, 48, 1));
@@ -781,7 +787,7 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
     }
 
     /**
-     * Keep panel height ≥ icon size + padding so taskbar icons stay square.
+     * Keep panel height ≥ icon size + 2× icon-padding so taskbar icons stay square.
      *
      * @param {Gio.Settings} settings
      * @param {string} heightKey
@@ -789,24 +795,27 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
      * @param {string} trayKey
      */
     _linkPanelIconSizes(settings, heightKey, iconKey, trayKey) {
-        const PAD = 8;
         let syncing = false;
+
+        const verticalPad = () =>
+            Math.max(0, Math.min(16, settings.get_int('icon-padding'))) * 2;
 
         const ensureFit = (fromIcon) => {
             if (syncing)
                 return;
             syncing = true;
             try {
+                const pad = verticalPad();
                 const height = settings.get_int(heightKey);
                 const icon = settings.get_int(iconKey);
-                const need = icon + PAD;
+                const need = icon + pad;
                 if (fromIcon && height < need)
                     settings.set_int(heightKey, Math.min(96, need));
-                else if (!fromIcon && icon > height - PAD)
-                    settings.set_int(iconKey, Math.max(16, height - PAD));
+                else if (!fromIcon && icon > height - pad)
+                    settings.set_int(iconKey, Math.max(16, height - pad));
 
                 const tray = settings.get_int(trayKey);
-                const maxTray = Math.max(12, settings.get_int(heightKey) - PAD);
+                const maxTray = Math.max(12, settings.get_int(heightKey) - pad);
                 if (tray > maxTray)
                     settings.set_int(trayKey, maxTray);
             } finally {
@@ -816,6 +825,7 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
 
         settings.connect(`changed::${iconKey}`, () => ensureFit(true));
         settings.connect(`changed::${heightKey}`, () => ensureFit(false));
+        settings.connect('changed::icon-padding', () => ensureFit(true));
         ensureFit(true);
     }
 

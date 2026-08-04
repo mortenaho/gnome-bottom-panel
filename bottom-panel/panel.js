@@ -111,9 +111,12 @@ class BottomPanel extends St.Widget {
         });
         this._rightBox.add_child(this._rightContent);
 
-        // Center cluster: Start + taskbar (direction is configurable)
+        // Center cluster: Start + taskbar (direction is configurable).
+        // Expand so a capped center column still gives the taskbar a real
+        // viewport width for horizontal scrolling.
         this._centerCluster = new St.BoxLayout({
             style_class: 'bottom-panel-center-cluster',
+            x_expand: true,
             y_expand: true,
             y_align: Clutter.ActorAlign.CENTER,
         });
@@ -184,6 +187,7 @@ class BottomPanel extends St.Widget {
 
         this._taskbar = new Taskbar({
             iconSize: opts.iconSize,
+            iconPadding: opts.iconPadding ?? 4,
             showFavorites: opts.showFavorites,
             showRunningApps: opts.showRunningApps,
             showShowAppsButton: false, // use StartButton instead
@@ -352,7 +356,8 @@ class BottomPanel extends St.Widget {
             const centerNat = Math.ceil(
                 this._centerBox.get_preferred_width(-1)[1]);
 
-            // Reserve tray / workspaces first; taskbar may scroll in the rest.
+            // Reserve tray / workspaces first; leftover capacity stays in the
+            // side columns (end space). The taskbar scrolls inside centerMax.
             const centerMax = Math.max(0, usable - leftNat - rightNat);
             const centerW = Math.min(centerNat, centerMax);
 
@@ -377,7 +382,9 @@ class BottomPanel extends St.Widget {
                     leftW = Math.max(leftNat, remaining - rightW);
                 }
             } else {
-                // Collision: keep the right tray fully visible.
+                // Collision: keep the right tray fully visible; extra room
+                // goes to the left (trailing flexible space toward the end
+                // of the leading side rather than eating the tray).
                 rightW = Math.min(rightNat, remaining);
                 leftW = Math.max(0, remaining - rightW);
                 if (leftW < leftNat && remaining >= leftNat) {
@@ -388,10 +395,10 @@ class BottomPanel extends St.Widget {
 
             this._leftBox.set_width(Math.max(0, leftW));
             this._rightBox.set_width(Math.max(0, rightW));
-            // Cap center when apps overflow so DashIconsLayout cannot
-            // shrink-to-zero and clip icons (scroll handles the rest).
-            if (centerNat > centerMax)
-                this._centerBox.set_width(centerMax);
+            // Always pin the center width: natural when it fits, capped when
+            // apps overflow so the ScrollView gets a real viewport and icons
+            // stay reachable instead of shrinking to zero.
+            this._centerBox.set_width(centerW);
         } finally {
             this._balancingSides = false;
         }
@@ -510,7 +517,8 @@ class BottomPanel extends St.Widget {
 
         const iconSize = fitIconSize(
             this._options.iconSize ?? 32,
-            this._options.panelHeight ?? 48);
+            this._options.panelHeight ?? 48,
+            this._options.iconPadding ?? 4);
         const [panelX, panelY] = this.get_transformed_position();
         const [panelW, panelH] = this.get_transformed_size();
         if (panelW < 1 || panelH < 1)
@@ -595,6 +603,7 @@ class BottomPanel extends St.Widget {
 
         this._taskbar?.updateParams({
             iconSize: options.iconSize,
+            iconPadding: options.iconPadding ?? 4,
             showFavorites: options.showFavorites,
             showRunningApps: options.showRunningApps,
             showShowAppsButton: false,

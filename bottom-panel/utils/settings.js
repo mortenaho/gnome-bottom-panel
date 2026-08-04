@@ -9,7 +9,11 @@ import Gio from 'gi://Gio';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-import {fitIconSize, fitPanelHeight} from './theming.js';
+import {
+    clampIconPadding,
+    fitIconSize,
+    fitPanelHeight,
+} from './theming.js';
 
 /** @type {Gio.Settings|null} */
 let _settings = null;
@@ -41,11 +45,12 @@ function normalizeClockLedColor(value) {
  * @param {number} panelHeight
  * @param {number} iconSize
  * @param {number} trayIconSize
+ * @param {number} iconPadding
  * @returns {{panelHeight: number, iconSize: number, trayIconSize: number}}
  */
-function fitSizeProfile(panelHeight, iconSize, trayIconSize) {
-    const height = fitPanelHeight(panelHeight, iconSize);
-    const icon = fitIconSize(iconSize, height);
+function fitSizeProfile(panelHeight, iconSize, trayIconSize, iconPadding) {
+    const height = fitPanelHeight(panelHeight, iconSize, iconPadding);
+    const icon = fitIconSize(iconSize, height, iconPadding);
     const tray = Math.min(
         Math.max(12, Math.round(Number(trayIconSize) || 22)),
         Math.max(12, height - 8));
@@ -146,18 +151,22 @@ export function getPanelOptionsForMonitor(monitorIndex) {
  */
 export function getPanelOptions() {
     const s = getSettings();
+    const iconPadding = clampIconPadding(s.get_int('icon-padding'));
     const smallSizes = fitSizeProfile(
         s.get_int('panel-height'),
         s.get_int('icon-size'),
-        s.get_int('tray-icon-size'));
+        s.get_int('tray-icon-size'),
+        iconPadding);
     const largeSizes = fitSizeProfile(
         s.get_int('panel-height-large'),
         s.get_int('icon-size-large'),
-        s.get_int('tray-icon-size-large'));
+        s.get_int('tray-icon-size-large'),
+        iconPadding);
     return {
         ...smallSizes,
         smallSizes,
         largeSizes,
+        iconPadding,
         largeMonitorMinWidth: s.get_int('large-monitor-min-width'),
         panelItemOrder: s.get_strv('panel-item-order'),
         panelSpacing: s.get_int('panel-spacing'),
