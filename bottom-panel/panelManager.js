@@ -33,6 +33,7 @@ export class PanelManager {
         this._enabled = false;
         this._rebuildTimeout = 0;
         this._settingsApplyTimeout = 0;
+        this._rebuilding = false;
     }
 
     enable() {
@@ -107,6 +108,9 @@ export class PanelManager {
     }
 
     disable() {
+        this._enabled = false;
+        this._rebuilding = false;
+
         if (this._rebuildTimeout) {
             GLib.Source.remove(this._rebuildTimeout);
             this._rebuildTimeout = 0;
@@ -124,9 +128,14 @@ export class PanelManager {
             this._monitorsChangedId = 0;
         }
 
+        // Restore shell indicators, then destroy actors, then show top panel.
+        this._teardownPanels();
         this._destroyPanels();
-        this._chrome.destroy();
-        this._enabled = false;
+        try {
+            this._chrome.destroy();
+        } catch (e) {
+            console.error(`Bottom Panel: chrome restore failed: ${e}`);
+        }
     }
 
     _createPanels() {
@@ -146,22 +155,69 @@ export class PanelManager {
                 ...getPanelOptionsForMonitor(index),
                 extensionPath: _extensionPath,
             };
-            const panel = new BottomPanel({
-                monitorIndex: index,
-                isPrimary: index === primaryIndex,
-                options,
-            });
-            this._panels.set(index, panel);
+            let panel = null;
+            try {
+                panel = new BottomPanel({
+                    monitorIndex: index,
+                    isPrimary: index === primaryIndex,
+                    options,
+                });
+                this._panels.set(index, panel);
+            } catch (e) {
+                console.error(`Bottom Panel: create monitor ${index} failed: ${e}`);
+                // Emergency restore if ctor reparented singletons then threw.
+                try {
+                    panel?.teardown?.();
+                    panel?.destroy?.();
+                } catch (_e) {
+                    // ignore
+                }
+            }
+        }
+    }
+
+    _teardownPanels() {
+        for (const panel of this._panels.values()) {
+            try {
+                panel.teardown();
+            } catch (e) {
+                console.warn(`Bottom Panel: panel teardown failed: ${e}`);
+            }
         }
     }
 
     _destroyPanels() {
-        for (const panel of this._panels.values())
-            panel.destroy();
+        this._teardownPanels();
+        for (const panel of this._panels.values()) {
+            try {
+                panel.destroy();
+            } catch (e) {
+                console.warn(`Bottom Panel: panel destroy failed: ${e}`);
+            }
+        }
         this._panels.clear();
     }
 
+    _cancelPendingWork() {
+        if (this._rebuildTimeout) {
+            GLib.Source.remove(this._rebuildTimeout);
+            this._rebuildTimeout = 0;
+        }
+        if (this._settingsApplyTimeout) {
+            GLib.Source.remove(this._settingsApplyTimeout);
+            this._settingsApplyTimeout = 0;
+        }
+    }
+
     _scheduleRebuild() {
+        if (!this._enabled)
+            return;
+
+        // Rebuild wins over in-flight settings apply.
+        if (this._settingsApplyTimeout) {
+            GLib.Source.remove(this._settingsApplyTimeout);
+            this._settingsApplyTimeout = 0;
+        }
         if (this._rebuildTimeout)
             GLib.Source.remove(this._rebuildTimeout);
 
@@ -174,17 +230,29 @@ export class PanelManager {
     }
 
     _rebuild() {
-        for (const panel of this._panels.values()) {
-            if (panel.isPrimary)
-                panel._systemTray?.disable();
-        }
+        if (!this._enabled || this._rebuilding)
+            return;
 
-        this._destroyPanels();
-        this._createPanels();
+        this._rebuilding = true;
+        try {
+            this._destroyPanels();
+            this._createPanels();
+        } catch (e) {
+            console.error(`Bottom Panel: rebuild failed: ${e}`);
+        } finally {
+            this._rebuilding = false;
+        }
     }
 
     _onSettingsChanged() {
+        if (!this._enabled || this._rebuilding)
+            return;
+
         // Batch rapid SpinRow / linked height+icon writes into one apply.
+        // Skip while a rebuild is already queued — rebuild applies everything.
+        if (this._rebuildTimeout)
+            return;
+
         if (this._settingsApplyTimeout) {
             GLib.Source.remove(this._settingsApplyTimeout);
             this._settingsApplyTimeout = 0;
@@ -198,12 +266,19 @@ export class PanelManager {
     }
 
     _applySettingsNow() {
+        if (!this._enabled || this._rebuilding || this._rebuildTimeout)
+            return;
+
         const shared = getPanelOptions();
 
-        if (shared.hideOverviewDash)
-            this._chrome.hideOverviewDash();
-        else
-            this._chrome.restoreOverviewDash();
+        try {
+            if (shared.hideOverviewDash)
+                this._chrome.hideOverviewDash();
+            else
+                this._chrome.restoreOverviewDash();
+        } catch (e) {
+            console.warn(`Bottom Panel: dash chrome update failed: ${e}`);
+        }
 
         const desiredCount = shared.multiMonitor
             ? Main.layoutManager.monitors.length
@@ -216,12 +291,19 @@ export class PanelManager {
 
         let needsRebuild = false;
         for (const [index, panel] of this._panels) {
-            const options = {
-                ...getPanelOptionsForMonitor(index),
-                extensionPath: _extensionPath,
-            };
-            if (panel.updateOptions(options))
+            if (panel._tornDown)
+                continue;
+            try {
+                const options = {
+                    ...getPanelOptionsForMonitor(index),
+                    extensionPath: _extensionPath,
+                };
+                if (panel.updateOptions(options))
+                    needsRebuild = true;
+            } catch (e) {
+                console.warn(`Bottom Panel: apply settings mon ${index}: ${e}`);
                 needsRebuild = true;
+            }
         }
 
         if (needsRebuild)

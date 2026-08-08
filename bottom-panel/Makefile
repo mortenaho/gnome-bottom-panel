@@ -25,14 +25,14 @@ install: schemas
 		./ "$(EXT_DIR)/"
 	glib-compile-schemas "$(EXT_DIR)/schemas/"
 	@echo "Installed to $(EXT_DIR)"
-	@echo "Enable with: make enable  (then restart the Shell / session)"
+	@echo "Reload: make disable && make enable"
 
 uninstall:
 	gnome-extensions disable $(UUID) 2>/dev/null || true
 	rm -rf "$(EXT_DIR)"
 	@echo "Removed $(EXT_DIR)"
 
-# Zip contents for extensions.gnome.org: runtime files only.
+# Zip for extensions.gnome.org
 pack: schemas
 	rm -f $(UUID).zip
 	zip -r $(UUID).zip \
@@ -59,11 +59,10 @@ enable:
 disable:
 	gnome-extensions disable $(UUID)
 
-# X11 only. On Wayland, log out/in or use Extensions app toggle.
 restart-shell:
 	@if [ "$$XDG_SESSION_TYPE" = "wayland" ]; then \
-		echo "Wayland session detected: Alt+F2 r is unavailable."; \
-		echo "Toggle the extension off/on, or log out and back in."; \
+		gnome-extensions disable $(UUID) 2>/dev/null || true; \
+		gnome-extensions enable $(UUID); \
 	else \
 		busctl --user call org.gnome.Shell /org/gnome/Shell org.gnome.Shell Eval s 'Meta.restart(_("Restarting…"))'; \
 	fi

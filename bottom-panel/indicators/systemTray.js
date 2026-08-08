@@ -247,47 +247,81 @@ export class SystemTrayManager {
 
     /**
      * Put every reparented indicator back where Main.panel expects it.
+     * Defensive: a failed restore must not abort remaining roles (that would
+     * leave Quick Settings parented under a dying actor → Shell crash).
      */
     disable() {
-        for (const role of this._roles) {
-            const indicator = Main.panel.statusArea[role];
-            const placement = this._placements.get(role);
-            if (!indicator?.container || !placement)
-                continue;
+        const roles = [...this._roles];
+        this._roles = [];
 
-            const {container} = indicator;
-            const currentParent = container.get_parent();
-            if (currentParent)
-                currentParent.remove_child(container);
-
-            const {parent, index} = placement;
-            if (parent) {
-                const children = parent.get_children();
-                const insertAt = Math.min(Math.max(index, 0), children.length);
-                parent.insert_child_at_index(container, insertAt);
-            }
-
-            const originalSide = this._menuSides.get(role);
-            if (indicator.menu && !indicator.menu.isDummy && originalSide !== undefined) {
-                indicator.menu._arrowSide = originalSide;
-                if (indicator.menu._boxPointer)
-                    indicator.menu._boxPointer._arrowSide = originalSide;
+        for (const role of roles) {
+            try {
+                this._restoreRole(role);
+            } catch (e) {
+                console.warn(`Bottom Panel: restore ${role} failed: ${e}`);
             }
         }
 
         this._placements.clear();
         this._menuSides.clear();
-        this._roles = [];
 
         // Restore stock keyboard visibility.
-        const kb = Main.panel.statusArea?.keyboard;
-        if (kb && this._keyboardWasVisible !== undefined)
-            kb.visible = this._keyboardWasVisible;
+        try {
+            const kb = Main.panel.statusArea?.keyboard;
+            if (kb && this._keyboardWasVisible !== undefined)
+                kb.visible = this._keyboardWasVisible;
+        } catch (_e) {
+            // disposed
+        }
 
         try {
             Main.panel._updatePanel?.();
         } catch (e) {
             console.warn(`Bottom Panel: panel update after restore failed: ${e}`);
+        }
+    }
+
+    /**
+     * @param {string} role
+     */
+    _restoreRole(role) {
+        const indicator = Main.panel.statusArea?.[role];
+        const placement = this._placements.get(role);
+        if (!indicator?.container || !placement)
+            return;
+
+        const {container} = indicator;
+        const currentParent = container.get_parent();
+        if (currentParent)
+            currentParent.remove_child(container);
+
+        const {parent, index} = placement;
+        let restored = false;
+        if (parent) {
+            try {
+                const children = parent.get_children();
+                const insertAt = Math.min(Math.max(index, 0), children.length);
+                parent.insert_child_at_index(container, insertAt);
+                restored = true;
+            } catch (_e) {
+                // Original parent already disposed during teardown.
+            }
+        }
+        if (!restored) {
+            // Fall back to stock right box so Quick Settings is not orphaned.
+            const fallback = Main.panel._rightBox ?? Main.panel;
+            try {
+                fallback?.add_child?.(container);
+            } catch (e) {
+                console.warn(`Bottom Panel: fallback restore ${role} failed: ${e}`);
+            }
+        }
+
+        const originalSide = this._menuSides.get(role);
+        if (indicator.menu && !indicator.menu.isDummy && originalSide !== undefined) {
+            indicator.menu._arrowSide = originalSide;
+            if (indicator.menu._boxPointer)
+                indicator.menu._boxPointer._arrowSide = originalSide;
         }
     }
 

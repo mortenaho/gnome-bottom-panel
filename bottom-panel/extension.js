@@ -1,6 +1,8 @@
 /**
- * Extension entry point (GNOME Shell 45+ ESM).
+ * Extension entry point.
  */
+
+import GLib from 'gi://GLib';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
@@ -25,15 +27,20 @@ export default class BottomPanelExtension extends Extension {
         super(metadata);
         this._panelManager = null;
         this._dockRestorers = [];
+        this._dockRestoreTimeout = 0;
     }
 
     enable() {
+        if (this._dockRestoreTimeout) {
+            GLib.Source.remove(this._dockRestoreTimeout);
+            this._dockRestoreTimeout = 0;
+        }
+
         const settings = this.getSettings();
         initSettings(settings);
         setExtensionPath(this.path);
 
-        // Disable conflicting docks only after the bottom panel starts
-        // successfully, so a setup failure does not leave the session without chrome.
+        // Disable conflicting docks only after a successful start.
         this._dockRestorers = [];
 
         const start = () => {
@@ -68,12 +75,34 @@ export default class BottomPanelExtension extends Extension {
     disable() {
         Main.layoutManager.disconnectObject(this);
 
-        this._panelManager?.disable();
+        try {
+            this._panelManager?.disable();
+        } catch (e) {
+            console.error(`Bottom Panel: disable failed: ${e}`);
+        }
         this._panelManager = null;
 
-        for (const restore of this._dockRestorers)
-            restore();
+        // Defer dock restore until after our chrome is back.
+        const restorers = this._dockRestorers;
         this._dockRestorers = [];
+        if (this._dockRestoreTimeout) {
+            GLib.Source.remove(this._dockRestoreTimeout);
+            this._dockRestoreTimeout = 0;
+        }
+        if (restorers.length) {
+            this._dockRestoreTimeout = GLib.timeout_add(
+                GLib.PRIORITY_DEFAULT, 250, () => {
+                    this._dockRestoreTimeout = 0;
+                    for (const restore of restorers) {
+                        try {
+                            restore();
+                        } catch (e) {
+                            console.warn(`Bottom Panel: dock restore failed: ${e}`);
+                        }
+                    }
+                    return GLib.SOURCE_REMOVE;
+                });
+        }
 
         clearSettings();
     }

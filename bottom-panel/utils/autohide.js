@@ -1,20 +1,4 @@
-/**
- * Auto-hide controller for a BottomPanel actor.
- *
- * Mac Dock–style behavior when enabled:
- * - Panel hides whenever the pointer leaves the dock zone
- * - Reveal from the bottom screen edge
- * - Overview / modal dialogs keep the panel visible
- *
- * Bounce-prevention over maximized windows:
- * - Animation generation tokens ignore stale onStopped callbacks
- * - Show grace + hide cooldown stop immediate reverse animations
- * - After hide, pointer must leave the edge before another reveal
- * - Hide abort only if the pointer is still in the edge show zone
- *
- * The actor stays mapped; "hidden" means translated off-screen with
- * reactive=false. Auto-hide disables struts.
- */
+/* Hide the panel off-screen; reveal from the bottom edge. */
 
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
@@ -24,14 +8,10 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 const SHOW_MS = 220;
 const HIDE_MS = 180;
 const HOT_EDGE_SIZE = 4;
-/** Pointer must enter this many px from the bottom to reveal. */
 const SHOW_ZONE = 4;
-/** Extra gap above the panel before a hide is allowed. */
 const HIDE_HYSTERESIS = 12;
 const POINTER_POLL_MS = 100;
-/** After revealing, ignore hide requests briefly. */
 const SHOW_GRACE_MS = 450;
-/** After hiding, ignore reveal requests briefly. */
 const HIDE_COOLDOWN_MS = 400;
 
 export class AutohideController {
@@ -78,7 +58,7 @@ export class AutohideController {
     }
 
     destroy() {
-        this._disable();
+        this._disable({teardown: true});
     }
 
     /** @returns {boolean} */
@@ -106,7 +86,10 @@ export class AutohideController {
         this._evaluatePointer();
     }
 
-    _disable() {
+    /**
+     * @param {{teardown?: boolean}} [opts]
+     */
+    _disable(opts = {}) {
         this._enabled = false;
         this._clearHideTimeout();
         this._clearGrace();
@@ -115,7 +98,8 @@ export class AutohideController {
         this._disconnectOverview();
         this._destroyHotEdge();
         this._showImmediate();
-        this._panel._setAffectsStruts(true);
+        // During panel teardown never re-add chrome (Mutter crash risk).
+        this._panel._setAffectsStruts(true, {teardown: !!opts.teardown});
     }
 
     _disconnectOverview() {

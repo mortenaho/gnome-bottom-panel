@@ -1,9 +1,4 @@
-/**
- * Keyboard layout indicator (character, flat flag, or both).
- *
- * Flags are scaled to the tray slot and painted into a clipped rectangle so
- * large source PNGs can never spill outside the indicator allocation.
- */
+/* Keyboard layout indicator (label and/or flag). */
 
 import Clutter from 'gi://Clutter';
 import GdkPixbuf from 'gi://GdkPixbuf';

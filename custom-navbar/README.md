@@ -1,13 +1,12 @@
 # Custom Navbar
 
-Replaces the default GNOME **top-bar clock** and **keyboard indicator** with a flat country flag and a seven-segment digital clock — while keeping the rest of the stock panel.
+Replaces the GNOME top-bar clock and keyboard indicator with a country flag and a seven-segment clock. The rest of the stock panel stays as-is.
 
 ## Features
 
-- Keyboard layout as a flat flag (click to switch layouts)
-- DSEG seven-segment clock (click opens calendar / notifications)
-- Configurable LED color, 12/24h, colon blink, flag height, digit size
-- GNOME Shell **50**
+- Keyboard layout as a flat flag (click to switch)
+- Seven-segment clock (click opens calendar / notifications)
+- Configurable LED color, 12/24h, colon blink, sizes
 
 ## Install
 
@@ -16,22 +15,17 @@ Replaces the default GNOME **top-bar clock** and **keyboard indicator** with a f
 # or: make install && make enable
 ```
 
-Then reload the Shell:
-
-| Session | How to reload |
-|--------|----------------|
-| **X11** | `Alt+F2` → `r` → Enter |
-| **Wayland** | Log out/in, or toggle the extension off/on |
+Reload:
 
 ```bash
+gnome-extensions disable custom-navbar@mortenaho.github.io
 gnome-extensions enable custom-navbar@mortenaho.github.io
-gnome-extensions prefs custom-navbar@mortenaho.github.io
 ```
 
-## Note
+On X11 you can also use `Alt+F2` → `r`.
 
-Do not run together with **Bottom Panel** (that extension hides the top bar). Use one or the other.
+Do not run together with Bottom Panel (that hides the top bar).
 
 ## License
 
-GPL-2.0-or-later. DSEG font: SIL OFL 1.1 (see `fonts/DSEG-LICENSE.txt`).
+GPL-2.0-or-later. DSEG font: SIL OFL 1.1 (`fonts/DSEG-LICENSE.txt`).

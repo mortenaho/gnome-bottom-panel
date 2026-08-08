@@ -1,6 +1,5 @@
 /**
- * Favorites + running apps based on the stock GNOME Dash.
- * Left-click shows Windows-like window previews when an app has multiple instances.
+ * Favorites and running apps via stock Dash.
  */
 
 import Clutter from 'gi://Clutter';
@@ -18,7 +17,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import { WindowPreviewMenu } from './windowPreview.js';
 
 /**
- * Dash icon with Windows-like multi-window activation.
+ * Dash icon with multi-window activation.
  */
 export const PanelDashIcon = GObject.registerClass(
     class PanelDashIcon extends Dash.DashIcon {
@@ -36,7 +35,12 @@ export const PanelDashIcon = GObject.registerClass(
             this._windowsChangedId = this.app.connect('windows-changed',
                 () => this.updateIconGeometry());
 
+            this._geomIdle = 0;
             this.connect('destroy', () => {
+                if (this._geomIdle) {
+                    GLib.Source.remove(this._geomIdle);
+                    this._geomIdle = 0;
+                }
                 if (this._windowsChangedId) {
                     this.app.disconnect(this._windowsChangedId);
                     this._windowsChangedId = 0;
@@ -47,7 +51,8 @@ export const PanelDashIcon = GObject.registerClass(
             });
 
             // Allocation may not be ready yet during construction.
-            GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._geomIdle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                this._geomIdle = 0;
                 this.updateIconGeometry();
                 return GLib.SOURCE_REMOVE;
             });
@@ -58,7 +63,7 @@ export const PanelDashIcon = GObject.registerClass(
          * (bottom panel) instead of the default top-left fallback.
          */
         updateIconGeometry() {
-            if (!this.get_stage())
+            if (!this.get_stage?.())
                 return;
 
             const rect = new Mtk.Rectangle();
@@ -81,7 +86,7 @@ export const PanelDashIcon = GObject.registerClass(
         }
 
         /**
-         * Windows for this app, filtered by isolate settings and skip-taskbar.
+         * App windows for this icon, filtered by isolate settings.
          *
          * @returns {Meta.Window[]}
          */
@@ -184,7 +189,7 @@ export const PanelDashIcon = GObject.registerClass(
                 return;
             }
 
-            // Multiple instances: show Windows-like thumbnails to pick a window.
+            // Multiple windows: show previews.
             this._toggleWindowPreviews();
             Main.overview.hide();
         }
@@ -199,6 +204,11 @@ export const PanelDashIcon = GObject.registerClass(
  * height animation.
  */
 export const PanelDash = GObject.registerClass(
+    {
+        Signals: {
+            'content-size-changed': {},
+        },
+    },
     class PanelDash extends Dash.Dash {
         /**
          * @param {{
@@ -222,7 +232,15 @@ export const PanelDash = GObject.registerClass(
             this._monitorIndex = params.monitorIndex;
             this.iconSize = params.iconSize;
             this._scrollView = null;
+            this._scrollContent = null;
+            this._scrollLeftBtn = null;
+            this._scrollRightBtn = null;
+            this._adjSignalIds = [];
             this._lockingStripWidth = false;
+            this._lockStripIdle = 0;
+            this._refilterIdle = 0;
+            this._arrowUpdateIdle = 0;
+            this._contentWidth = 0;
 
             this.add_style_class_name('bottom-panel-dash');
 
@@ -257,13 +275,7 @@ export const PanelDash = GObject.registerClass(
         }
 
         /**
-         * Wrap the icon strip in a horizontal ScrollView so a long taskbar
-         * stays usable at a fixed icon size.
-         *
-         * GNOME 50+ St.ScrollView only accepts an StScrollable child.
-         * Dash._box is an St.Widget (custom layout), so it must be wrapped
-         * in St.BoxLayout — otherwise PanelDash construction throws and the
-         * taskbar stays empty.
+         * Wrap Dash._box in St.BoxLayout for St.ScrollView (needs StScrollable).
          */
         _installScrollView() {
             const box = this._box;
@@ -309,9 +321,27 @@ export const PanelDash = GObject.registerClass(
                 else
                     this._scrollView.child = this._scrollContent;
 
-                parent.insert_child_at_index(this._scrollView, 0);
+                this._scrollLeftBtn = this._createScrollArrow('start');
+                this._scrollRightBtn = this._createScrollArrow('end');
+
+                // [◀] [icons…] [▶]
+                parent.insert_child_at_index(this._scrollLeftBtn, 0);
+                parent.insert_child_at_index(this._scrollView, 1);
+                parent.insert_child_at_index(this._scrollRightBtn, 2);
+
                 this._scrollView.connect('scroll-event',
                     this._onDashScroll.bind(this));
+                this._scrollView.connect('notify::allocation',
+                    () => this._queueUpdateScrollArrows());
+
+                const adjustment = this._getHAdjustment();
+                if (adjustment) {
+                    for (const prop of ['value', 'upper', 'page-size', 'lower']) {
+                        const id = adjustment.connect(`notify::${prop}`,
+                            () => this._queueUpdateScrollArrows());
+                        this._adjSignalIds.push([adjustment, id]);
+                    }
+                }
 
                 // DashIconsLayout reports min-width 0, so without locking the
                 // strip to its natural width the viewport shrinks icons away
@@ -323,6 +353,8 @@ export const PanelDash = GObject.registerClass(
                 // Fall back to the stock non-scrolling layout.
                 this._scrollView = null;
                 this._scrollContent = null;
+                this._scrollLeftBtn = null;
+                this._scrollRightBtn = null;
                 if (box.get_parent() !== parent) {
                     box.get_parent()?.remove_child(box);
                     parent.insert_child_at_index(box, 0);
@@ -331,14 +363,164 @@ export const PanelDash = GObject.registerClass(
         }
 
         /**
+         * @param {'start'|'end'} side
+         * @returns {St.Button}
+         */
+        _createScrollArrow(side) {
+            const rtl = this.get_text_direction?.() === Clutter.TextDirection.RTL;
+            const goingStart = side === 'start';
+            // Physical left/right relative to LTR panel chrome.
+            const iconName = (goingStart !== rtl)
+                ? 'go-previous-symbolic'
+                : 'go-next-symbolic';
+
+            const btn = new St.Button({
+                style_class: 'bottom-panel-scroll-arrow',
+                reactive: true,
+                can_focus: true,
+                track_hover: true,
+                visible: false,
+                x_expand: false,
+                y_expand: true,
+                y_align: Clutter.ActorAlign.CENTER,
+                child: new St.Icon({
+                    icon_name: iconName,
+                    style_class: 'bottom-panel-scroll-arrow-icon',
+                    icon_size: 16,
+                }),
+            });
+            btn.connect('clicked', () => this._scrollByPage(goingStart ? -1 : 1));
+            return btn;
+        }
+
+        /**
+         * @returns {object|null}
+         */
+        _getHAdjustment() {
+            return this._scrollView?.hadjustment ??
+                this._scrollView?.hscroll?.adjustment ??
+                null;
+        }
+
+        /**
+         * @param {number} direction — -1 toward start, +1 toward end
+         */
+        _scrollByPage(direction) {
+            const adjustment = this._getHAdjustment();
+            if (!adjustment)
+                return;
+            const page = Math.max(
+                adjustment.page_size * 0.75,
+                adjustment.step_increment || this.iconSize || 32);
+            const next = Math.max(
+                adjustment.lower,
+                Math.min(
+                    adjustment.upper - adjustment.page_size,
+                    adjustment.value + direction * page));
+            if (typeof adjustment.ease === 'function') {
+                adjustment.ease(next, {
+                    duration: 180,
+                    mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+                });
+            } else {
+                adjustment.set_value(next);
+            }
+            this._queueUpdateScrollArrows();
+        }
+
+        _queueUpdateScrollArrows() {
+            if (this._arrowUpdateIdle || !this.get_stage?.())
+                return;
+            this._arrowUpdateIdle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                this._arrowUpdateIdle = 0;
+                if (this.get_stage?.())
+                    this._updateScrollArrows();
+                return GLib.SOURCE_REMOVE;
+            });
+        }
+
+        _updateScrollArrows() {
+            const left = this._scrollLeftBtn;
+            const right = this._scrollRightBtn;
+            const adjustment = this._getHAdjustment();
+            if (!left || !right || !adjustment) {
+                left && (left.visible = false);
+                right && (right.visible = false);
+                return;
+            }
+
+            const overflow = adjustment.upper > adjustment.page_size + 1;
+            const atStart = adjustment.value <= adjustment.lower + 1;
+            const atEnd = adjustment.value >=
+                adjustment.upper - adjustment.page_size - 1;
+
+            left.visible = overflow && !atStart;
+            right.visible = overflow && !atEnd;
+            left.reactive = left.visible;
+            right.reactive = right.visible;
+        }
+
+        /**
+         * Natural width of the icon strip (all visible apps), ignoring the
+         * ScrollView viewport. Used so the panel can grow the taskbar area
+         * before enabling scroll.
+         *
+         * @returns {number}
+         */
+        getIconStripWidth() {
+            if (this._contentWidth > 0)
+                return this._contentWidth;
+            return this._measureIconStripWidth();
+        }
+
+        /**
+         * @returns {number}
+         */
+        _measureIconStripWidth() {
+            if (!this._box)
+                return 0;
+            let width = 0;
+            const children = this._box.get_children().filter(c => c.visible);
+            const spacing = this._box.get_theme_node?.()
+                ?.get_length?.('spacing') ?? 0;
+            for (let i = 0; i < children.length; i++) {
+                const [, nat] = children[i].get_preferred_width(-1);
+                width += Math.ceil(nat);
+                if (i > 0)
+                    width += spacing;
+            }
+            return Math.max(0, width);
+        }
+
+        /**
+         * Desired taskbar width including scroll arrows when overflowing.
+         *
+         * @returns {number}
+         */
+        getDesiredWidth() {
+            const strip = this.getIconStripWidth();
+            let arrows = 0;
+            if (this._scrollLeftBtn?.visible)
+                arrows += Math.ceil(this._scrollLeftBtn.get_preferred_width(-1)[1]);
+            if (this._scrollRightBtn?.visible)
+                arrows += Math.ceil(this._scrollRightBtn.get_preferred_width(-1)[1]);
+            // Reserve arrow slots when overflow is imminent so layout doesn't jump.
+            const viewport = this._scrollView?.width ?? 0;
+            if (arrows === 0 && strip > 0 && viewport > 0 && strip > viewport + 1)
+                arrows = 28 * 2;
+            return strip + arrows;
+        }
+
+        /**
          * Debounce strip-width locking across rapid child/layout updates.
          */
         _queueLockIconStripWidth() {
-            if (this._lockStripIdle)
+            if (this._lockStripIdle || !this.get_stage?.())
                 return;
             this._lockStripIdle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
                 this._lockStripIdle = 0;
-                this._lockIconStripWidth();
+                if (this.get_stage?.())
+                    this._lockIconStripWidth();
                 return GLib.SOURCE_REMOVE;
             });
         }
@@ -354,26 +536,17 @@ export const PanelDash = GObject.registerClass(
 
             this._lockingStripWidth = true;
             try {
-                // Sum visible children so we don't depend on DashIconsLayout's
-                // min-width 0 (and avoid clearing width every pass).
-                let width = 0;
-                const children = this._box.get_children().filter(c => c.visible);
-                const spacing = this._box.get_theme_node?.()
-                    ?.get_length?.('spacing') ?? 0;
-                for (let i = 0; i < children.length; i++) {
-                    const [, nat] = children[i].get_preferred_width(-1);
-                    width += Math.ceil(nat);
-                    if (i > 0)
-                        width += spacing;
-                }
-                if (width < 1)
-                    width = 1;
+                const width = Math.max(1, this._measureIconStripWidth());
+                this._contentWidth = width;
 
                 if (Math.abs(this._box.width - width) > 0.5)
                     this._box.set_width(width);
                 if (this._scrollContent &&
                     Math.abs(this._scrollContent.width - width) > 0.5)
                     this._scrollContent.set_width(width);
+
+                this._updateScrollArrows();
+                this.emit('content-size-changed');
             } finally {
                 this._lockingStripWidth = false;
             }
@@ -413,6 +586,7 @@ export const PanelDash = GObject.registerClass(
                 return Clutter.EVENT_PROPAGATE;
 
             adjustment.set_value(adjustment.get_value() + delta);
+            this._queueUpdateScrollArrows();
             return Clutter.EVENT_STOP;
         }
 
@@ -450,6 +624,8 @@ export const PanelDash = GObject.registerClass(
          * Refresh minimize targets for every taskbar icon.
          */
         updateIconGeometries() {
+            if (!this.get_stage?.() || !this._box)
+                return;
             for (const item of this._box.get_children())
                 item.child?.updateIconGeometry?.();
         }
@@ -459,7 +635,10 @@ export const PanelDash = GObject.registerClass(
                 return;
 
             // When isolating, hide DashIcon items that don't match.
-            const refilter = () => this._refilterItems();
+            const refilter = () => {
+                if (this.get_stage?.())
+                    this._refilterItems();
+            };
             global.workspace_manager.connectObject(
                 'active-workspace-changed', refilter, this);
             global.display.connectObject(
@@ -468,8 +647,12 @@ export const PanelDash = GObject.registerClass(
                 this);
 
             this._box.connectObject('child-added', () => {
-                GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-                    this._refilterItems();
+                if (this._refilterIdle)
+                    return;
+                this._refilterIdle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                    this._refilterIdle = 0;
+                    if (this.get_stage?.())
+                        this._refilterItems();
                     return GLib.SOURCE_REMOVE;
                 });
             }, this);
@@ -478,6 +661,9 @@ export const PanelDash = GObject.registerClass(
         }
 
         _refilterItems() {
+            if (!this.get_stage?.() || !this._box)
+                return;
+
             const activeWs = global.workspace_manager.get_active_workspace();
             const monitorIndex = this._monitorIndex;
             const isolateWs = this._bpParams.isolateWorkspaces;
@@ -530,6 +716,7 @@ export const PanelDash = GObject.registerClass(
 
             this.updateIconGeometries();
             this._queueLockIconStripWidth();
+            this._queueUpdateScrollArrows();
         }
 
         _onItemAdded(item) {
@@ -543,8 +730,15 @@ export const PanelDash = GObject.registerClass(
             icon?.setIconSize?.(this._bpParams.iconSize);
 
             if (item.child instanceof PanelDashIcon) {
-                GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-                    item.child?.updateIconGeometry?.();
+                const child = item.child;
+                if (child._itemGeomIdle) {
+                    GLib.Source.remove(child._itemGeomIdle);
+                    child._itemGeomIdle = 0;
+                }
+                child._itemGeomIdle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                    child._itemGeomIdle = 0;
+                    if (child.get_stage?.())
+                        child.updateIconGeometry?.();
                     return GLib.SOURCE_REMOVE;
                 });
             }
@@ -552,14 +746,23 @@ export const PanelDash = GObject.registerClass(
             // Place labels above the panel.
             if (item.label) {
                 item.label.connectObject('notify::visible', () => {
-                    if (!item.label.visible)
+                    if (!item.label?.visible || !item.get_stage?.())
                         return;
-                    GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-                        if (!item.label)
+                    if (item._labelPosIdle) {
+                        GLib.Source.remove(item._labelPosIdle);
+                        item._labelPosIdle = 0;
+                    }
+                    item._labelPosIdle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                        item._labelPosIdle = 0;
+                        if (!item.label || !item.get_stage?.())
                             return GLib.SOURCE_REMOVE;
-                        const [, stageY] = item.get_transformed_position();
-                        const labelHeight = item.label.height || 20;
-                        item.label.y = stageY - labelHeight - 8;
+                        try {
+                            const [, stageY] = item.get_transformed_position();
+                            const labelHeight = item.label.height || 20;
+                            item.label.y = stageY - labelHeight - 8;
+                        } catch (_e) {
+                            // disposed mid-rebuild
+                        }
                         return GLib.SOURCE_REMOVE;
                     });
                 }, this);
@@ -622,17 +825,80 @@ export const PanelDash = GObject.registerClass(
                 GLib.Source.remove(this._lockStripIdle);
                 this._lockStripIdle = 0;
             }
-            global.workspace_manager.disconnectObject(this);
-            global.display.disconnectObject(this);
-            this._box?.disconnectObject(this);
-            super.destroy();
+            if (this._refilterIdle) {
+                GLib.Source.remove(this._refilterIdle);
+                this._refilterIdle = 0;
+            }
+            if (this._arrowUpdateIdle) {
+                GLib.Source.remove(this._arrowUpdateIdle);
+                this._arrowUpdateIdle = 0;
+            }
+            for (const [obj, id] of this._adjSignalIds) {
+                try {
+                    obj.disconnect(id);
+                } catch (_e) {
+                    // disposed
+                }
+            }
+            this._adjSignalIds = [];
+            try {
+                global.workspace_manager.disconnectObject(this);
+                global.display.disconnectObject(this);
+                this._box?.disconnectObject(this);
+            } catch (_e) {
+                // already disconnected
+            }
+            this._unwrapScrollView();
+            try {
+                super.destroy();
+            } catch (e) {
+                console.warn(`Bottom Panel: PanelDash destroy: ${e}`);
+            }
+        }
+
+        /**
+         * Restore stock Dash layout before destroy.
+         */
+        _unwrapScrollView() {
+            if (!this._scrollView || !this._box)
+                return;
+            try {
+                const box = this._box;
+                const scrollParent = this._scrollView.get_parent();
+                const scrollIndex = scrollParent
+                    ? scrollParent.get_children().indexOf(this._scrollView)
+                    : 0;
+                this._scrollContent?.remove_child?.(box);
+                scrollParent?.remove_child?.(this._scrollView);
+                this._scrollLeftBtn?.destroy?.();
+                this._scrollRightBtn?.destroy?.();
+                this._scrollLeftBtn = null;
+                this._scrollRightBtn = null;
+                this._scrollView.destroy();
+                this._scrollView = null;
+                this._scrollContent = null;
+                if (scrollParent && box.get_parent() !== scrollParent)
+                    scrollParent.insert_child_at_index(
+                        box, Math.max(0, scrollIndex));
+            } catch (e) {
+                console.warn(`Bottom Panel: unwrap dash scroll failed: ${e}`);
+                this._scrollView = null;
+                this._scrollContent = null;
+                this._scrollLeftBtn = null;
+                this._scrollRightBtn = null;
+            }
         }
     });
 
 /**
- * Container widget that hosts PanelDash and exposes a stable actor for the panel.
+ * Taskbar host for PanelDash.
  */
 export const Taskbar = GObject.registerClass(
+    {
+        Signals: {
+            'content-size-changed': {},
+        },
+    },
     class Taskbar extends St.BoxLayout {
         /**
          * @param {object} params — forwarded to PanelDash
@@ -680,10 +946,27 @@ export const Taskbar = GObject.registerClass(
             this._dashContainer = container;
             this.setDirection(this._params.direction);
 
+            this._dash.connectObject(
+                'content-size-changed', () => this.emit('content-size-changed'),
+                this);
+
             this.connectObject('notify::allocation', () => {
+                if (!this.get_stage?.())
+                    return;
                 this._dash?.updateIconGeometries?.();
                 this._dash?._queueLockIconStripWidth?.();
+                this._dash?._queueUpdateScrollArrows?.();
             }, this);
+        }
+
+        /**
+         * Natural width the panel should reserve for the taskbar before scroll.
+         *
+         * @returns {number}
+         */
+        getDesiredWidth() {
+            return this._dash?.getDesiredWidth?.() ??
+                Math.ceil(this.get_preferred_width(-1)[1] || 0);
         }
 
         /**
@@ -715,11 +998,16 @@ export const Taskbar = GObject.registerClass(
          */
         updateParams(updates) {
             Object.assign(this._params, updates);
+            if (this._dash?._bpParams)
+                Object.assign(this._dash._bpParams, updates);
             if (updates.iconSize !== undefined && this._dash)
                 this._dash.setIconSize(updates.iconSize);
             if (updates.iconPadding !== undefined && this._dash)
                 this._dash.setIconPadding(updates.iconPadding);
+            this._dash?._queueRedisplay?.();
             this._dash?._refilterItems?.();
+            this._dash?._queueLockIconStripWidth?.();
+            this._dash?._queueUpdateScrollArrows?.();
 
             if (updates.direction !== undefined)
                 this.setDirection(updates.direction);

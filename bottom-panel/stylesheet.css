@@ -1,4 +1,4 @@
-/* stylesheet.css — Windows 11-inspired bottom panel */
+/* Bottom panel */
 
 .bottom-panel {
     background-color: transparent;
@@ -45,7 +45,7 @@
     background-color: rgba(243, 243, 243, 0.78);
 }
 
-/* —— Start button (Win11-like) —— */
+/* Start button */
 
 .bottom-panel-start-button {
     border-radius: 6px;
@@ -93,6 +93,36 @@
     min-width: 0;
 }
 
+/* Scroll overflow chevrons — only shown when icons don't fit */
+.bottom-panel-scroll-arrow {
+    width: 22px;
+    min-width: 22px;
+    padding: 0 2px;
+    border-radius: 6px;
+    margin: 0 1px;
+    transition-duration: 120ms;
+}
+
+.bottom-panel-scroll-arrow:hover {
+    background-color: rgba(128, 128, 128, 0.28);
+}
+
+.bottom-panel-dark .bottom-panel-scroll-arrow:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+.bottom-panel-light .bottom-panel-scroll-arrow:hover {
+    background-color: rgba(0, 0, 0, 0.10);
+}
+
+.bottom-panel-scroll-arrow:active {
+    background-color: rgba(0, 120, 212, 0.35);
+}
+
+.bottom-panel-scroll-arrow-icon {
+    icon-size: 16px;
+}
+
 .bottom-panel-app-icon {
     border-radius: 6px;
     /* Default; live value comes from icon-padding via inline style */
@@ -117,12 +147,12 @@
     background-color: rgba(0, 0, 0, 0.06);
 }
 
-/* Running indicator underline (Win11-ish) */
+/* Running indicator */
 .bottom-panel-app-icon .dash-item-container .overview-icon {
     border-radius: 6px;
 }
 
-/* —— Multi-window preview flyout (Windows-like) —— */
+/* Multi-window preview */
 
 /* Transparent boxpointer: no panel fill, no arrow, no scrollbar chrome */
 .bottom-panel-window-preview-menu.popup-menu-boxpointer,
@@ -182,7 +212,7 @@
     padding: 2px;
 }
 
-/* —— App indicator tray + Windows-like overflow —— */
+/* App indicator tray */
 
 .bottom-panel-app-tray {
     spacing: 2px;
@@ -241,8 +271,7 @@
     opacity: 1;
 }
 
-/* SNI text labels ("...") — icon-only tray like Windows.
-   Do not target StIcon; only collapse text labels. */
+/* Hide SNI text labels; keep icons only. */
 .bottom-panel-app-tray-flyout StLabel,
 .bottom-panel-app-tray-visible StLabel,
 .bottom-panel-app-tray-overflow-box StLabel {

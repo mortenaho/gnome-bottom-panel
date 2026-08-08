@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# install.sh — install Bottom Panel without requiring Make
 set -euo pipefail
 
 UUID="bottom-panel@mortenaho.github.io"
@@ -24,12 +23,9 @@ rsync -a --delete \
 
 glib-compile-schemas "${EXT_DIR}/schemas/"
 
-# User extensions must not be globally disabled, otherwise Shell never
-# loads anything from ~/.local/share/gnome-shell/extensions.
 if command -v gsettings >/dev/null; then
   gsettings set org.gnome.shell disable-user-extensions false || true
 
-  # Keep UUID in the enabled list (Shell applies this after a session restart).
   python3 - <<PY
 import ast, subprocess
 uuid = "${UUID}"
@@ -48,28 +44,12 @@ print(f"enabled-extensions updated ({len(lst)} entries)")
 PY
 fi
 
-echo "Done."
-echo
+echo "Done: ${EXT_DIR}"
 
-# Try hot-enable (works on X11 / after Shell already knows the UUID).
 if command -v gnome-extensions >/dev/null; then
-  if gnome-extensions enable "${UUID}" 2>/dev/null; then
-    echo "Enabled via gnome-extensions."
-  else
-    echo "Shell does not know this extension yet (normal on Wayland after install)."
-  fi
+  gnome-extensions enable "${UUID}" 2>/dev/null || \
+    echo "Enable later with: gnome-extensions enable ${UUID}"
 fi
 
-SESSION_TYPE="${XDG_SESSION_TYPE:-unknown}"
-echo
-echo "Installed files:"
-echo "  ${EXT_DIR}"
-echo
-if [[ "${SESSION_TYPE}" == "wayland" ]]; then
-  echo "IMPORTANT (Wayland): log out and log back in so GNOME Shell"
-  echo "loads the extension. Hot-reload is not available."
-else
-  echo "Next: Alt+F2 → r   then:  gnome-extensions enable ${UUID}"
-fi
-echo
-echo "Prefs: gnome-extensions prefs ${UUID}"
+echo "Reload: gnome-extensions disable ${UUID} && gnome-extensions enable ${UUID}"
+echo "Prefs:  gnome-extensions prefs ${UUID}"

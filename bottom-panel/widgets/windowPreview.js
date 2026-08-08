@@ -1,5 +1,5 @@
 /**
- * Windows-like window preview popup for multi-instance apps.
+ * Window preview popup for multi-instance apps.
  */
 
 import Clutter from 'gi://Clutter';

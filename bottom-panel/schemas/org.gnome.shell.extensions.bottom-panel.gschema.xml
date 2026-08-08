@@ -244,13 +244,13 @@
     <key name="show-app-tray" type="b">
       <default>true</default>
       <summary>Show app tray icons</summary>
-      <description>Show AppIndicator / status tray icons (Telegram, AnyDesk, download managers, …) on the right side. Requires Ubuntu AppIndicators or a compatible extension. Icons can sit behind a Windows-like chevron overflow.</description>
+      <description>Show AppIndicator / status tray icons on the right. Requires Ubuntu AppIndicators or a compatible extension. Extra icons go behind the overflow button.</description>
     </key>
 
     <key name="tray-max-visible" type="i">
       <default>0</default>
       <summary>Max visible tray icons</summary>
-      <description>Number of app tray icons shown inline on the panel. 0 hides all behind the chevron flyout (Windows 11 style).</description>
+      <description>How many tray icons stay on the panel. 0 puts all icons in the overflow flyout.</description>
       <range min="0" max="16"/>
     </key>
 
@@ -293,7 +293,7 @@
     <key name="autohide" type="b">
       <default>false</default>
       <summary>Auto-hide panel</summary>
-      <description>Mac Dock–style: hide the panel whenever the pointer leaves it, and reveal from the bottom screen edge. Windows use the full screen height while auto-hide is enabled. The panel stays visible in Overview and modal dialogs.</description>
+      <description>Hide the panel when the pointer leaves it; move to the bottom edge to show it again. While hidden, windows can use the full screen height. Stays visible in Overview and modal dialogs.</description>
     </key>
 
     <key name="autohide-delay" type="i">

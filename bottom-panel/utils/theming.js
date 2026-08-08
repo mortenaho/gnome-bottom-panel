@@ -1,7 +1,3 @@
-/**
- * Light/dark adaptation and panel visual styling.
- */
-
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Shell from 'gi://Shell';
@@ -11,11 +7,6 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 const DESKTOP_INTERFACE = 'org.gnome.desktop.interface';
 
-/**
- * Returns true when the desktop prefers a dark appearance.
- *
- * @returns {boolean}
- */
 export function isDarkTheme() {
     try {
         const settings = new Gio.Settings({schema_id: DESKTOP_INTERFACE});
@@ -25,26 +16,18 @@ export function isDarkTheme() {
         if (scheme === 'prefer-light')
             return false;
     } catch (_e) {
-        // Fall through to stylesheet heuristic.
+        // fall through
     }
 
-    // Fallback: inspect the shell theme context.
     const themeContext = St.ThemeContext.get_for_stage(global.stage);
     const theme = themeContext.get_theme();
     if (!theme)
         return true;
 
-    // Yaru / Adwaita dark stylesheets typically include "-dark" in a path.
     const paths = theme.get_custom_stylesheets?.() ?? [];
     return paths.some(uri => String(uri).includes('-dark'));
 }
 
-/**
- * Parse #RRGGBB into RGB components, or null if invalid.
- *
- * @param {string} hex
- * @returns {{r: number, g: number, b: number}|null}
- */
 export function parseHexColor(hex) {
     const match = /^#?([0-9a-fA-F]{6})$/.exec(String(hex ?? '').trim());
     if (!match)
@@ -57,25 +40,15 @@ export function parseHexColor(hex) {
     };
 }
 
-/**
- * Relative luminance heuristic for choosing light vs dark chrome (text/icons).
- *
- * @param {string} hex
- * @returns {boolean}
- */
 export function isHexColorDark(hex) {
     const rgb = parseHexColor(hex);
     if (!rgb)
         return isDarkTheme();
-    // Rec. 709 luma
     const luma = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
     return luma < 0.5;
 }
 
 /**
- * Apply light/dark style classes on a panel actor.
- * When a custom panel color is active, chrome contrast follows that color.
- *
  * @param {St.Widget} actor
  * @param {{useCustomPanelColor?: boolean, panelColor?: string}} [options]
  */

@@ -1,12 +1,4 @@
-/**
- * Reparent AppIndicator / legacy tray icons into the bottom panel.
- * Windows 11-style chevron flyout for overflow icons.
- *
- * Critical: the flyout must stay mapped while an icon menu is open.
- * Hiding it unmaps the indicator and immediately kills its menu.
- * Relayout must also avoid remove/re-add of icons that already sit in the
- * correct parent — reparenting unmaps the actor and destroys open menus.
- */
+/* AppIndicator / StatusNotifier tray for the bottom panel. */
 
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
@@ -36,6 +28,20 @@ const RESERVED_ROLES = new Set([
 
 /** SNI labels that are not real icons (Ubuntu update notifier, etc.). */
 const ELLIPSIS_LABELS = new Set(['...', '…', '⋯', '‥']);
+
+/**
+ * AppIndicator uses image-loading-symbolic (three dots) as its initial /
+ * failed-lookup placeholder. image-missing is St's own broken-icon fallback.
+ */
+const PLACEHOLDER_ICON_NAMES = new Set([
+    'image-loading-symbolic',
+    'image-loading',
+    'image-missing',
+    'image-missing-symbolic',
+]);
+
+/** Clearer stand-in when an SNI icon never loads. */
+const DEFAULT_TRAY_ICON = 'application-x-executable-symbolic';
 
 /**
  * @param {string} role
@@ -89,6 +95,100 @@ function suppressTrayLabels(actor) {
 }
 
 /**
+ * @param {object} indicator
+ * @returns {St.Icon|null}
+ */
+function findIndicatorIcon(indicator) {
+    try {
+        const icon = indicator?.icon ?? indicator?._icon ?? null;
+        if (icon instanceof St.Icon)
+            return icon;
+    } catch (_e) {
+        // disposed
+    }
+    return null;
+}
+
+/**
+ * @param {St.Icon} icon
+ * @returns {boolean}
+ */
+function isPlaceholderOrMissingIcon(icon) {
+    if (!icon)
+        return true;
+    try {
+        const name = icon.icon_name ?? '';
+        if (PLACEHOLDER_ICON_NAMES.has(name))
+            return true;
+        // Empty St.Icon — nothing useful to show.
+        if (!name && !icon.gicon)
+            return true;
+        return false;
+    } catch (_e) {
+        return true;
+    }
+}
+
+/**
+ * Collect St.Icon actors owned by an indicator / its container.
+ *
+ * @param {object} indicator
+ * @param {Clutter.Actor} [container]
+ * @returns {St.Icon[]}
+ */
+function collectIndicatorIcons(indicator, container) {
+    const icons = [];
+    const seen = new Set();
+    const add = node => {
+        if (!(node instanceof St.Icon) || seen.has(node))
+            return;
+        seen.add(node);
+        icons.push(node);
+    };
+
+    add(findIndicatorIcon(indicator));
+
+    const walk = node => {
+        if (!node)
+            return;
+        try {
+            add(node);
+            for (const child of node.get_children?.() ?? [])
+                walk(child);
+        } catch (_e) {
+            // disposed
+        }
+    };
+    walk(container);
+    return icons;
+}
+
+/**
+ * Replace AppIndicator's three-dot / missing placeholder with a real default.
+ *
+ * @param {object} indicator
+ * @param {Clutter.Actor} [container]
+ * @param {number} size
+ * @returns {boolean}
+ */
+function applyDefaultTrayIcon(indicator, container, size) {
+    let applied = false;
+    for (const icon of collectIndicatorIcons(indicator, container)) {
+        if (!isPlaceholderOrMissingIcon(icon))
+            continue;
+        try {
+            icon.gicon = null;
+            icon.icon_name = DEFAULT_TRAY_ICON;
+            icon.icon_size = size;
+            applied = true;
+        } catch (_e) {
+            // disposed
+        }
+    }
+    return applied;
+}
+
+/**
  * True when the indicator only shows an ellipsis label (no useful icon).
  *
  * @param {object} indicator
@@ -101,9 +201,10 @@ function isEllipsisOnly(indicator) {
         if (!ELLIPSIS_LABELS.has(label))
             return false;
 
-        // Has a real icon actor with content? keep it, just suppress label.
-        const icon = indicator?.icon ?? indicator?._icon;
-        if (icon && icon.width > 1 && icon.height > 1)
+        // Has a real (non-placeholder) icon? keep it, just suppress label.
+        const icon = findIndicatorIcon(indicator);
+        if (icon && icon.width > 1 && icon.height > 1 &&
+            !isPlaceholderOrMissingIcon(icon))
             return false;
 
         // Label-only ellipsis noise (common for apt update SNI).
@@ -154,9 +255,13 @@ class AppIndicatorTray extends St.BoxLayout {
         this._menuSides = new Map();
         this._menuOpenIds = new Map();
         this._labelSignalIds = new Map();
+        this._iconNotifyIds = new Map();
         this._pollId = 0;
         this._refreshIdle = 0;
+        this._openIdle = 0;
+        this._raiseMenuIdle = 0;
         this._origAddToStatusArea = null;
+        this._addToStatusAreaWrapper = null;
         this._flyoutOpen = false;
         this._stageClickId = 0;
         this._blurEffect = null;
@@ -213,7 +318,13 @@ class AppIndicatorTray extends St.BoxLayout {
         this._syncFromStatusArea();
 
         this._pollId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
-            this._syncFromStatusArea();
+            if (!this.get_stage?.())
+                return GLib.SOURCE_REMOVE;
+            try {
+                this._syncFromStatusArea();
+            } catch (e) {
+                console.warn(`Bottom Panel: tray poll failed: ${e}`);
+            }
             return GLib.SOURCE_CONTINUE;
         });
 
@@ -286,8 +397,13 @@ class AppIndicatorTray extends St.BoxLayout {
 
         // Skip the opening click so it is not treated as an outside dismiss.
         this._dismissGuardUntil = GLib.get_monotonic_time() + 250 * 1000;
-        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-            if (!this._flyoutOpen)
+        if (this._openIdle) {
+            GLib.Source.remove(this._openIdle);
+            this._openIdle = 0;
+        }
+        this._openIdle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._openIdle = 0;
+            if (!this._flyoutOpen || !this.get_stage?.())
                 return GLib.SOURCE_REMOVE;
             // Second pass after St theme/allocation settles.
             this._ensureOverflowIconsVisible();
@@ -304,7 +420,7 @@ class AppIndicatorTray extends St.BoxLayout {
         if (!this._flyoutOpen)
             return;
 
-        // Never unmap while an icon menu is open — that kills the menu.
+        // Never unmap while an icon menu is open.
         if (!opts.force && this._anyIndicatorMenuOpen())
             return;
 
@@ -343,6 +459,7 @@ class AppIndicatorTray extends St.BoxLayout {
                 child.opacity = 255;
                 this._applySize(child);
                 suppressTrayLabels(child);
+                this._applyFallbackIcon(child);
                 // Panel buttons can report 0×0 outside the top bar.
                 if ((child.width ?? 0) < 2 || (child.height ?? 0) < 2) {
                     child.set_size(min, min);
@@ -568,28 +685,36 @@ class AppIndicatorTray extends St.BoxLayout {
 
         this._origAddToStatusArea = panel.addToStatusArea.bind(panel);
         const tray = this;
-        panel.addToStatusArea = function (...args) {
+        const wrapper = function (...args) {
             const result = tray._origAddToStatusArea(...args);
+            if (!tray.get_stage?.())
+                return result;
             const [role] = args;
             if (isAppTrayRole(role, result))
                 tray._queueRefresh();
             return result;
         };
+        this._addToStatusAreaWrapper = wrapper;
+        panel.addToStatusArea = wrapper;
     }
 
     _unhookPanelAdditions() {
         if (this._origAddToStatusArea && Main.panel) {
-            Main.panel.addToStatusArea = this._origAddToStatusArea;
+            // Only restore if we still own the monkey-patch.
+            if (Main.panel.addToStatusArea === this._addToStatusAreaWrapper)
+                Main.panel.addToStatusArea = this._origAddToStatusArea;
             this._origAddToStatusArea = null;
+            this._addToStatusAreaWrapper = null;
         }
     }
 
     _queueRefresh() {
-        if (this._refreshIdle)
+        if (this._refreshIdle || !this.get_stage?.())
             return;
         this._refreshIdle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
             this._refreshIdle = 0;
-            this._syncFromStatusArea();
+            if (this.get_stage?.())
+                this._syncFromStatusArea();
             return GLib.SOURCE_REMOVE;
         });
     }
@@ -642,6 +767,20 @@ class AppIndicatorTray extends St.BoxLayout {
             return;
         suppressTrayLabels(entry.container);
         this._applySize(entry.container);
+        applyDefaultTrayIcon(entry.indicator, entry.container, this._iconSize);
+    }
+
+    /**
+     * @param {Clutter.Actor} container
+     */
+    _applyFallbackIcon(container) {
+        for (const {indicator, container: c} of this._icons.values()) {
+            if (c === container) {
+                applyDefaultTrayIcon(indicator, container, this._iconSize);
+                return;
+            }
+        }
+        applyDefaultTrayIcon(null, container, this._iconSize);
     }
 
     /**
@@ -669,11 +808,17 @@ class AppIndicatorTray extends St.BoxLayout {
                     if (open) {
                         this._dismissGuardUntil =
                             GLib.get_monotonic_time() + 600 * 1000;
-                        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-                            if (menu.isOpen)
-                                this._raiseMenuAboveFlyout(menu);
-                            return GLib.SOURCE_REMOVE;
-                        });
+                        if (this._raiseMenuIdle) {
+                            GLib.Source.remove(this._raiseMenuIdle);
+                            this._raiseMenuIdle = 0;
+                        }
+                        this._raiseMenuIdle = GLib.idle_add(
+                            GLib.PRIORITY_DEFAULT_IDLE, () => {
+                                this._raiseMenuIdle = 0;
+                                if (menu.isOpen && this.get_stage?.())
+                                    this._raiseMenuAboveFlyout(menu);
+                                return GLib.SOURCE_REMOVE;
+                            });
                     }
                 });
             this._menuOpenIds.set(role, id);
@@ -692,6 +837,23 @@ class AppIndicatorTray extends St.BoxLayout {
             }
         }
 
+        // Re-apply default if AppIndicator resets to the three-dot placeholder.
+        const iconActor = findIndicatorIcon(indicator);
+        if (iconActor?.connect) {
+            try {
+                const reapply = () => {
+                    applyDefaultTrayIcon(indicator, container, this._iconSize);
+                };
+                const ids = [
+                    iconActor.connect('notify::icon-name', reapply),
+                    iconActor.connect('notify::gicon', reapply),
+                ];
+                this._iconNotifyIds.set(role, {obj: iconActor, ids});
+            } catch (_e) {
+                // ignore
+            }
+        }
+
         if (parent)
             parent.remove_child(container);
 
@@ -701,6 +863,7 @@ class AppIndicatorTray extends St.BoxLayout {
             indicator.show?.();
             suppressTrayLabels(container);
             this._applySize(container);
+            applyDefaultTrayIcon(indicator, container, this._iconSize);
         } catch (_e) {
             // disposed
         }
@@ -736,21 +899,74 @@ class AppIndicatorTray extends St.BoxLayout {
             this._labelSignalIds.delete(role);
         }
 
-        try {
-            if (container && !container.is_finalized?.()) {
-                const currentParent = container.get_parent();
-                if (currentParent)
-                    currentParent.remove_child(container);
+        const iconHook = this._iconNotifyIds.get(role);
+        if (iconHook) {
+            for (const id of iconHook.ids ?? []) {
+                try {
+                    iconHook.obj.disconnect(id);
+                } catch (_e) {
+                    // ignore
+                }
+            }
+            this._iconNotifyIds.delete(role);
+        }
 
-                if (placement?.parent && !placement.parent.is_finalized?.()) {
+        const canUseActor = actor => {
+            if (!actor)
+                return false;
+            try {
+                actor.get_parent?.();
+                return true;
+            } catch (_e) {
+                return false;
+            }
+        };
+
+        try {
+            if (!canUseActor(container)) {
+                this._icons.delete(role);
+                return;
+            }
+
+            let currentParent = null;
+            try {
+                currentParent = container.get_parent();
+            } catch (_e) {
+                currentParent = null;
+            }
+            if (canUseActor(currentParent)) {
+                try {
+                    currentParent.remove_child(container);
+                } catch (_e) {
+                    // already detached/disposed
+                }
+            }
+
+            let restored = false;
+            if (canUseActor(placement?.parent)) {
+                try {
                     const children = placement.parent.get_children();
                     const insertAt = Math.min(
                         Math.max(placement.index, 0), children.length);
-                    placement.parent.insert_child_at_index(container, insertAt);
+                    placement.parent.insert_child_at_index(
+                        container, insertAt);
+                    restored = true;
+                } catch (_e) {
+                    // Original parent already disposed.
                 }
             }
+                if (!restored) {
+                    const fallback = Main.panel._rightBox ?? Main.panel;
+                    if (canUseActor(fallback)) {
+                        try {
+                            fallback.add_child(container);
+                        } catch (_e) {
+                            // disposed
+                        }
+                    }
+                }
         } catch (_e) {
-            // already disposed during extension reload
+            // disposed during extension reload
         }
 
         if (indicator?.menu && this._menuSides.has(role)) {
@@ -793,12 +1009,14 @@ class AppIndicatorTray extends St.BoxLayout {
             this._ensureInBox(this._visibleBox, entry.container, index);
             this._applySize(entry.container);
             suppressTrayLabels(entry.container);
+            applyDefaultTrayIcon(entry.indicator, entry.container, this._iconSize);
         });
 
         hidden.forEach((entry, index) => {
             this._ensureInBox(this._overflowBox, entry.container, index);
             this._applySize(entry.container);
             suppressTrayLabels(entry.container);
+            applyDefaultTrayIcon(entry.indicator, entry.container, this._iconSize);
         });
 
         const showChevron = hidden.length > 0;
@@ -851,12 +1069,25 @@ class AppIndicatorTray extends St.BoxLayout {
             GLib.Source.remove(this._refreshIdle);
             this._refreshIdle = 0;
         }
+        if (this._openIdle) {
+            GLib.Source.remove(this._openIdle);
+            this._openIdle = 0;
+        }
+        if (this._raiseMenuIdle) {
+            GLib.Source.remove(this._raiseMenuIdle);
+            this._raiseMenuIdle = 0;
+        }
 
         this._closeFlyout({force: true});
         this._unhookPanelAdditions();
 
-        for (const role of [...this._icons.keys()])
-            this._release(role);
+        for (const role of [...this._icons.keys()]) {
+            try {
+                this._release(role);
+            } catch (e) {
+                console.warn(`Bottom Panel: release tray ${role}: ${e}`);
+            }
+        }
 
         if (this._flyout) {
             applyBlurEffect(this._flyout, false);

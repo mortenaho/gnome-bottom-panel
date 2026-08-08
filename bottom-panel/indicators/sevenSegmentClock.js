@@ -164,6 +164,7 @@ export const SevenSegmentClock = GObject.registerClass({
         this._metricsIdle = 0;
         this._colonLit = true;
         this._timeText = '00:00';
+        this._destroyed = false;
 
         this._label = new St.Label({
             style_class: 'seven-seg-label',
@@ -171,7 +172,6 @@ export const SevenSegmentClock = GObject.registerClass({
             x_align: Clutter.ActorAlign.CENTER,
             clip_to_allocation: false,
         });
-        // Never ellipsize — DSEG digits must stay fully visible.
         this._label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
         this._label.clutter_text.single_line_mode = true;
         this.set_child(this._label);
@@ -183,9 +183,13 @@ export const SevenSegmentClock = GObject.registerClass({
 
         if (this._extensionPath) {
             ensureDsegFont(this._extensionPath).then(ok => {
-                if (ok && this._label) {
+                if (!ok || this._destroyed || !this.get_stage?.() || !this._label)
+                    return;
+                try {
                     this._applyStyle();
                     this._queueMetricsChanged();
+                } catch (_e) {
+                    // actor finalized after await
                 }
             });
         }
@@ -358,6 +362,7 @@ export const SevenSegmentClock = GObject.registerClass({
     }
 
     _onDestroy() {
+        this._destroyed = true;
         this._stopTick();
         if (this._metricsIdle) {
             GLib.Source.remove(this._metricsIdle);

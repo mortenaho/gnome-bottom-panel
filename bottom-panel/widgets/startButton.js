@@ -1,10 +1,4 @@
-/**
- * startButton.js — Windows-style Start / Apps button.
- *
- * Stock Dash showAppsButton is wired for the overview context and often does
- * nothing once reparented into chrome. This dedicated button always toggles
- * Main.overview.showApps().
- */
+/* Apps / overview toggle button. */
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
@@ -109,7 +103,6 @@ class StartButton extends St.Button {
     _toggleApps() {
         try {
             if (Main.overview.visible) {
-                // If already in apps view, hide; otherwise switch to apps.
                 const controls = Main.overview._overview?.controls;
                 const appsVisible = controls?.dash?.showAppsButton?.checked ||
                     Main.overview.dash?.showAppsButton?.checked;
@@ -123,7 +116,6 @@ class StartButton extends St.Button {
             }
         } catch (e) {
             console.error(`Bottom Panel: Start button failed: ${e}`);
-            // Last resort
             try {
                 Main.overview.toggle();
             } catch (_e2) {

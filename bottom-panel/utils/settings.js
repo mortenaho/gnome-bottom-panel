@@ -1,10 +1,3 @@
-/**
- * settings.js — Typed accessors and change helpers for the extension schema.
- *
- * Centralizes GSettings reads so panel and widget code stays free of
- * duplicated key strings and can subscribe to changes with one helper.
- */
-
 import Gio from 'gi://Gio';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -57,18 +50,10 @@ function fitSizeProfile(panelHeight, iconSize, trayIconSize, iconPadding) {
     return {panelHeight: height, iconSize: icon, trayIconSize: tray};
 }
 
-/**
- * Initialize the module-level settings handle.
- *
- * @param {Gio.Settings} settings
- */
 export function initSettings(settings) {
     _settings = settings;
 }
 
-/**
- * Clear the module-level settings handle (call from Extension.disable).
- */
 export function clearSettings() {
     _settings = null;
 }

@@ -278,7 +278,7 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
             _('Status icons from apps (Telegram, AnyDesk, download managers, …) via Ubuntu AppIndicators')));
         contents.add(this._spinRow(settings, 'tray-max-visible',
             _('Max visible tray icons'),
-            _('0 = Windows-style: all icons behind the ↑ chevron; higher keeps some on the panel'),
+            _('0 = all icons in the ↑ flyout; higher keeps some on the panel'),
             0, 16, 1));
 
         page.add(this._buildItemOrderGroup(settings));
@@ -771,7 +771,7 @@ export default class BottomPanelPreferences extends ExtensionPreferences {
 
         const hideGroup = new Adw.PreferencesGroup({
             title: _('Auto-hide'),
-            description: _('Mac Dock–style: hide when unused, reveal from the bottom edge'),
+            description: _('Hide when unused; move to the bottom edge to show'),
         });
         page.add(hideGroup);
 

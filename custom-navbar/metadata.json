@@ -1,7 +1,7 @@
 {
   "uuid": "custom-navbar@mortenaho.github.io",
   "name": "Custom Navbar",
-  "description": "Replaces the default GNOME top-bar clock and keyboard indicator with a flat country flag and a seven-segment digital clock.\n\n• Flag shows the active keyboard layout (click to switch)\n• DSEG seven-segment clock (click opens calendar/notifications)\n• Keeps the stock top panel; only swaps those center indicators",
+  "description": "Replaces the top-bar clock and keyboard indicator with a country flag and a seven-segment clock. Keeps the rest of the stock panel.",
   "shell-version": [
     "50"
   ],
